@@ -3,10 +3,15 @@
 """
 EWT360 自包含全量刷课脚本（单文件一体化）— [测试版V3-test ewt_brush_v3_test]
 ============================================================
-[v3-test 新增优化]（参考 chentinghong578-bit/ewt-auto-player，2026-09）：
+[v3-test 新增优化]（参考 chentinghong578-bit/ewt-auto-player + 强行直写实验，2026-09）：
   A. 作业列表快路径：优先 status=0 一次拉取全部作业（含已截止），
      相比 V3 的 status 1/2/3 三次分态查询，请求数从 3+ 降为 1，
      扫描更快且覆盖已截止作业；失败自动回退老路径，行为兼容。
+  B. FAST_MODE 快速复核循环（实测验证）：爆发间隔从固定 10s 改为 0.2s 高频，
+     每波实时查 percent、达标(>=0.8)即停不多打；conf 节流至每 20 波刷新。
+     实测单课时 21min 视频 41 秒刷完（≈32倍速）、17min 视频 119 秒（≈9倍速）。
+     注意：纯直写接口（updateMission ct=1/record submit/clog 伪造）均被平台
+     校验拦截——percent 不动或假成功，唯有 BFE 竞态累计真实有效，故不采用直写。
   其余能力与正式版 V3 完全一致（登录签名头/FM板报直写/clog补发/
   过课检测参数对齐/阈值0.8/进度延迟复核）。
 [V3新增功能]（基于 5 个开源仓库交叉研究，2026-08-20）：
@@ -84,6 +89,9 @@ UA = (
 SPEED = 2                # 硬上限！speed=2.1 即触发 699001（实测验证）
 BURST_SIZE = 12          # 单课时竞态爆发并发路数（--burst 可调）
 BURST_WAIT = 10          # 爆发间隔（秒）— bucket refill 约需 ~12s
+FAST_MODE = True         # [v3-test] 快速复核循环：小间隔高频爆发+每波查进度提前停
+FAST_INTERVAL = 0.2      # [v3-test] 快速模式波间隔（秒），实测 48发/波 + 0.2s ≈ 9~32倍速
+FAST_MAX_ROUNDS = 400    # [v3-test] 快速模式单课时最大波数（防死循环兜底）
 MAX_LOGIN_RETRY = 3      # token 自动续期上限
 # WAF 风控缓解配置
 WAF_BACKOFF_SECONDS = 120.0   # WAF 拦截后冷却秒数
@@ -863,13 +871,15 @@ class QuizTimepoint:
 
 async def _concurrent_burst(conf, token, lesson_id, course_id, school_id,
                             biz_code, video_type, n_threads, stay_time=10000,
-                            speed=SPEED):
+                            speed=SPEED, burst_override=False):
     """异步竞态爆发：asyncio.Event 栅栏同时放行 n_threads 个协程打 bfe。
     竞态条件利用不变——服务端 check-and-deduct 非原子，多数请求滑过限流。
     返回 (ok_count, total_count, waf_count)。"""
     global BURST_SIZE
-    # 热更新：始终以全局 BURST_SIZE 为准（watcher 线程每 2 秒同步配置文件）
-    n_threads = BURST_SIZE
+    # 热更新：以全局 BURST_SIZE 为准（watcher 线程每 2 秒同步配置文件）
+    # [v3-test] burst_override > 0 时用显式传参（快速模式独立路数，不受热更新影响）
+    if not burst_override:
+        n_threads = BURST_SIZE
     client = _get_client()
     start_evt = asyncio.Event()
     results: list = [None] * n_threads
@@ -1165,22 +1175,44 @@ async def run_brush_task(
         round_num = 0
 
         # Step 4: 竞态爆发循环（stay_time=10s 最优，实测验证）
+        # [v3-test] FAST_MODE：小间隔高频爆发 + 每波查 percent 提前停（实测 ≈9~32倍速）
+        cur_percent = 0.0
         while (needed > 0 or round_num < force_rounds) and stall_count < 3:
+            if FAST_MODE and round_num >= FAST_MAX_ROUNDS:
+                break  # 快速模式兜底：防死循环
+            if FAST_MODE and cur_percent >= 0.8 and round_num > force_rounds:
+                break  # [v3-test] 达标即停（平台阈值0.8），不再多打一波
             round_num += 1
-            # 等待间隔（bucket refill ~12s）。首轮加 phase_offset_ms 错峰。
-            # BURST_WAIT 加 ±20% 抖动——打散节奏降低 WAF 频率识别概率。
-            wait_sec = BURST_WAIT * random.uniform(0.8, 1.2) + (phase_offset_ms / 1000 if round_num == 1 else 0)
-            await asyncio.sleep(wait_sec)
-            # 刷新 session（secret 可能过期）
-            try:
-                conf = await ewt_client.fetch_global_conf(biz_code=biz_code)
-            except WafCaptchaBlocked:
-                if await _waf_cooldown():
-                    yield BrushEvent(type="waf_blocked", message="EWT 风控拦截，请稍后重试或切换网络")
-                    return
-                continue
-            except Exception:
-                pass  # 沿用旧 conf
+            if FAST_MODE:
+                # 快速节奏：固定小间隔（首轮仍加相位错峰）
+                wait_sec = FAST_INTERVAL + (phase_offset_ms / 1000 if round_num == 1 else 0)
+                await asyncio.sleep(wait_sec)
+                # conf 节流刷新：仅每 20 波刷一次（secret 短期有效，省去每波一次请求）
+                if round_num % 20 == 1 and round_num > 1:
+                    try:
+                        conf = await ewt_client.fetch_global_conf(biz_code=biz_code)
+                    except WafCaptchaBlocked:
+                        if await _waf_cooldown():
+                            yield BrushEvent(type="waf_blocked", message="EWT 风控拦截，请稍后重试或切换网络")
+                            return
+                        continue
+                    except Exception:
+                        pass  # 沿用旧 conf
+            else:
+                # 等待间隔（bucket refill ~12s）。首轮加 phase_offset_ms 错峰。
+                # BURST_WAIT 加 ±20% 抖动——打散节奏降低 WAF 频率识别概率。
+                wait_sec = BURST_WAIT * random.uniform(0.8, 1.2) + (phase_offset_ms / 1000 if round_num == 1 else 0)
+                await asyncio.sleep(wait_sec)
+                # 刷新 session（secret 可能过期）
+                try:
+                    conf = await ewt_client.fetch_global_conf(biz_code=biz_code)
+                except WafCaptchaBlocked:
+                    if await _waf_cooldown():
+                        yield BrushEvent(type="waf_blocked", message="EWT 风控拦截，请稍后重试或切换网络")
+                        return
+                    continue
+                except Exception:
+                    pass  # 沿用旧 conf
             # 播放上报
             burst_ok, burst_total, burst_waf = await _fire_play(
                 conf, token, lesson_id, report_cid, school_id,
@@ -1212,6 +1244,7 @@ async def run_brush_task(
             current_play_time = info2.get("playTime", 0)
             needed = max(0, finish_play_time - current_play_time)
             pct = info2.get("percent", 0)
+            cur_percent = pct  # [v3-test] 快速模式达标即停判据
             yield BrushEvent(
                 type="progress", round=round_num,
                 play_time_ms=current_play_time, percent=pct,
@@ -1324,6 +1357,8 @@ async def run_brush_task(
                     # 强制轮次中 delta=0 是预期行为（已100%），不计入停滞
                     if round_num <= force_rounds:
                         pass
+                    elif FAST_MODE and cur_percent >= 0.8:
+                        pass  # [v3-test] 已达标，delta=0 属预期，不算停滞
                     else:
                         stall_count += 1
             else:
