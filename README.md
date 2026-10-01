@@ -51,6 +51,7 @@ EWT360 是网课平台，老师布置的作业中包含大量视频课时，需�
 ## ✨ 功能特性
 
 ### 🌟 Optimized 单文件版（新手首推）
+
 | 功能 | 说明 |
 |---|---|
 | 📦 单文件 | 引擎+界面合并，无需其他脚本，不会再有「找不到主脚本」 |
@@ -65,6 +66,7 @@ EWT360 是网课平台，老师布置的作业中包含大量视频课时，需�
 | ⚙️ 配置全可选 | 实例数 / 并发 / 爆发 / QPS / **刷课模式**（传统或快速复核）|
 
 ### ⭐ 引擎核心能力（Optimized 与 V3 共有）
+
 | 功能 | 说明 |
 |---|---|
 | 🔐 自动登录 | 账号密码 AES 加密 → oauth 登录，无需手动抓 token |
@@ -80,20 +82,6 @@ EWT360 是网课平台，老师布置的作业中包含大量视频课时，需�
 | 📡 clog 补发 | 完成判定后补发播放日志，提高完成率 |
 | 🚀 快速复核模式 | 可选开关，间隔 0.2 秒高频爆发 + 达标即停 |
 | 🛡 并发重试 | 扫描时失败科目/日期组自动重试 2 次，**防漏课时** |
-| 🆕 原始版本保留 | 收录原作者 spark.py 未修改版本（详见下方） |
-
----|---|
-| 🔐 自动登录 | 账号密码 AES 加密 → oauth 登录，无需手动抓 token |
-| 🔍 自动扫描 | 识别全部未完成课时（含时长），只刷必学科目 |
-| ⚡ 竞态爆发加速 | 单课时内 N 路并发上报，等效 ~5x 加速（--burst 可调） |
-| 🚦 WAF 风控兜底 | 拦截自动冷却 120s 重试（最多 2 次） |
-| 🔄 token 自动续期 | 被挤下线自动重新登录（最多 3 次），任务不中断 |
-| 🎯 看课检测三重机制 | 弹题绕过 / 检测置过 / 未通过自动重刷（最多 3 次） |
-| 🧩 多实例并行 | 自动分片（offset/limit）+ 错峰（phase-offset），速度成倍提升 |
-| 📊 实时进度 | 命令行进度条 / 日志文件，实时可见 |
-| ✅ 自动验证 | 刷完自动重扫确认，失败课时自动补刷（最多 3 轮） |
-| 🆕 FM/板报直写 | V3 新增：FM 收听 / 板报课时 `updateMission` 一次直写 100% |
-| 📡 clog 补发 | V3 新增：完成判定后补发播放日志，提高完成率 |
 | 🆕 原始版本保留 | 收录原作者 spark.py 未修改版本（详见下方） |
 
 ---
@@ -201,9 +189,13 @@ ewt360-brush/
 
 ```bash
 python ewt_brush_optimized.py --help
+
 # 常用：--account --password --token --hw
+
 #       --concurrency --burst --qps
+
 #       --offset --limit --force-all --force-rounds --dry-run --fast/--no-fast
+
 ```
 
 ---
@@ -215,7 +207,9 @@ python ewt_brush_optimized.py --help
 
 ```bash
 pip install -r requirements.txt
+
 # 等价于：
+
 pip install httpx pycryptodome
 ```
 
@@ -265,14 +259,18 @@ cd legacy/v3 && python3 ewt_brush_easy_v3.py
 ### 方式三：命令行直接跑（V3 引擎）
 
 ```bash
+
 # 预检扫描（先看有哪些课时）
+
 cd legacy/v3 && python3 ewt_brush_v3.py --dry-run --account 你的账号 --password 你的密码
 
 # 🏆 新手推荐：单实例高路数极速刷（实测 3 分 21 秒刷完 400 分钟视频）
+
 cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
     --concurrency 18 --burst 48 --qps 100000
 
 # 若想多实例并行（进阶，需手动分片）
+
 cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 0   --limit 25
 cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
@@ -285,13 +283,17 @@ cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的
 ```bash
 cd v2
 python3 ewt_brush_easy.py       # V2 傻瓜入口
+
 # 或引擎：
+
 python3 ewt_brush_v2.py --account 你的账号 --password 你的密码 --concurrency 18 --burst 48 --qps 100000
 ```
 
 **原始版 spark.py**（仅接受 token）：
 ```bash
+
 # 提供已有 token 刷全部
+
 python3 original/spark.py --token YOUR_TOKEN --all
 ```
 
@@ -450,7 +452,6 @@ cd legacy/v3 && python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
 
 ---
 
-
 ## 💰 赞赏
 
 如果这个项目帮到了你，省下了大量刷课时间，欢迎扫码请我喝杯咖啡！☕
@@ -482,11 +483,9 @@ cd legacy/v3 && python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
   <img src="https://img.shields.io/github/issues/Zoan0404/ewt360-brush?style=social&label=Issue%20%E5%8F%8D%E9%A6%88" alt="Issue 反馈">
 </a>
 
-
 ## ⭐ 支持
 
 如果本项目对你有帮助，欢迎 Star ⭐ 或提交 Issue / PR。
 也欢迎分享你的实测数据（课时数/耗时/配置），帮助优化推荐参数！
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Zoan0404/ewt360-brush&type=Date)](https://star-history.com/#Zoan0404/ewt360-brush&Date)
-
