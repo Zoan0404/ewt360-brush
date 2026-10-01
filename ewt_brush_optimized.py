@@ -164,6 +164,33 @@ BURST_SIZE = 12          # 单课时竞态爆发并发路数（--burst 可调）
 BURST_WAIT = 10          # 爆发间隔（秒）— bucket refill 约需 ~12s
 FAST_MODE = False        # [用户可选] 快速复核循环（默认关闭=传统方式）：小间隔高频爆发+每波查进度提前停
 FAST_INTERVAL = 0.2      # [v3-test] 快速模式波间隔（秒），实测 48发/波 + 0.2s ≈ 9~32倍速
+
+# ---- [进度面板] 全局渲染钩子：run_brush_all 会安装 ProgressDashboard ----
+_PROGRESS_SINK = None   # 存在时接管刷课输出（原地刷新面板）
+
+
+def _install_sink(dash) -> None:
+    """安装/卸载进度面板（传入 None 则卸载并关闭旧面板）。"""
+    global _PROGRESS_SINK
+    old = _PROGRESS_SINK
+    if old is not None and old is not dash:
+        try:
+            old.close()
+        except Exception:
+            pass
+    _PROGRESS_SINK = dash if (dash is not None and getattr(dash, "enabled", False)) else None
+
+
+def _p_log(msg: str) -> None:
+    """刷课期间的日志输出：有面板交给面板，否则直接打印。"""
+    if _PROGRESS_SINK is not None:
+        try:
+            _PROGRESS_SINK.show_log(msg)
+            return
+        except Exception:
+            pass
+    print(msg, flush=True)
+
 FAST_MAX_ROUNDS = 400    # [v3-test] 快速模式单课时最大波数（防死循环兜底）
 MAX_LOGIN_RETRY = 3      # token 自动续期上限
 # WAF 风控缓解配置
@@ -1838,20 +1865,29 @@ async def _run_once(client: EwtClient, school_id: int, hw_id, lesson_id, course_
         phase_offset_ms=phase_offset_ms, speed=speed, n_threads=burst_size,
     ):
         if ev.type == "progress":
-            print(f"  [进度][{lesson_id}] 第 {ev.round} 轮 | 已播 {ev.play_time_ms / 1000:.0f}s"
-                  f"/总长 {ev.lesson_time_ms / 1000:.0f}s"
-                  f" | 还需 {ev.needed_ms / 1000:.0f}s"
-                  f" | 请求 {ev.requests_ok}/{ev.requests_total}", flush=True)
+            _p = (ev.play_time_ms / ev.lesson_time_ms) if ev.lesson_time_ms else 0.0
+            _p = max(0.0, min(1.0, _p))
+            _detail = ("已播 %s/%s  还需 %s  请求 %d/%d"
+                       % (human_time(ev.play_time_ms / 1000),
+                          human_time(ev.lesson_time_ms / 1000),
+                          human_time(ev.needed_ms / 1000),
+                          ev.requests_ok, ev.requests_total))
+            if _PROGRESS_SINK is not None:
+                _PROGRESS_SINK.update(lesson_id, _p, _detail)
+            else:
+                print("  ▶ [%s] %s %3d%%  %s"
+                      % (lesson_id, progress_bar(_p, 22), int(_p * 100), _detail),
+                      flush=True)
         elif ev.type == "done":
-            print(f"  [完成][{lesson_id}] 累加 {ev.credited_sec}s"
-                  f" | 请求 {ev.requests_ok}/{ev.requests_total}", flush=True)
+            _p_log("  [完成][%s] 累加 %ss | 请求 %d/%d"
+                   % (lesson_id, ev.credited_sec, ev.requests_ok, ev.requests_total))
         elif ev.type == "waf_blocked":
-            print(f"  [WAF拦截] {ev.message}", flush=True)
+            _p_log("  [WAF拦截] " + str(ev.message))
             status = "waf_blocked"
         elif ev.type == "token_invalid":
             status = "token_invalid"
         elif ev.type == "error":
-            print(f"  [错误] {_translate_error(ev.message)}", flush=True)
+            _p_log("  [错误] " + _translate_error(ev.message))
             status = "token_invalid" if _is_token_invalid(ev.message) else "error"
     return status
 
@@ -1986,12 +2022,12 @@ async def _mission_direct_complete(client: EwtClient, school_id: int, task: dict
              "contentType": content_type, "percent": 1},
         )
         ok = bool(data.get("success"))
-        print(f"  [直写][{lesson_id}] {str(title)[:40]} "
+        _p_log(f"  [直写][{lesson_id}] {str(title)[:40]} "
               f"updateMission(ct={content_type}) → {'✅ 100%' if ok else str(data)[:120]}",
               flush=True)
         return ok
     except Exception as e:
-        print(f"  [直写失败][{lesson_id}] {_translate_error(str(e))}", flush=True)
+        _p_log(f"  [直写失败][{lesson_id}] {_translate_error(str(e))}", flush=True)
         return False
 
 
@@ -2028,7 +2064,7 @@ async def _brush_one(client: EwtClient, school_id: int, hw_id, task: dict,
                     break
                 await asyncio.sleep(2)   # 等进度刷新后复查
             if not detection_passed:
-                print(f"  ⚠ 看课检测未通过（第 {attempt}/{DETECTION_MAX_RETRIES} 次），"
+                _p_log(f"  ⚠ 看课检测未通过（第 {attempt}/{DETECTION_MAX_RETRIES} 次），"
                       f"{'3s 后自动重刷…' if attempt < DETECTION_MAX_RETRIES else ''}")
                 if attempt < DETECTION_MAX_RETRIES:
                     await asyncio.sleep(3)
@@ -2040,7 +2076,7 @@ async def _brush_one(client: EwtClient, school_id: int, hw_id, task: dict,
             except Exception:
                 scr_ok = False
             if scr_ok:
-                print("  [通过] 看课检测已通过")
+                _p_log("  [通过] 看课检测已通过")
             # scr_ok 恒为 True（pass_serious_check 已降级为不重试不重刷），无 else 分支
             # [测试版] 补发 clog 播放日志（无鉴权端点），提高后台完成判定率（best-effort）
             try:
@@ -2048,17 +2084,17 @@ async def _brush_one(client: EwtClient, school_id: int, hw_id, task: dict,
                     str(getattr(client, "user_id", "0")),
                     lesson_id, course_id or "", task.get("duration") or 0)
                 if clog_ok:
-                    print("  [clog] 播放日志已补发")
+                    _p_log("  [clog] 播放日志已补发")
             except Exception:
                 pass
             return True
         if status == "token_invalid":
             raise TokenInvalidError()
         if status == "waf_blocked":
-            print("  ✗ 风控拦截（不自动重试），请稍后重试或更换网络")
+            _p_log("  ✗ 风控拦截（不自动重试），请稍后重试或更换网络")
             return False
         return False  # error — 不重试
-    print(f"  ✗ 看课检测未通过，已重试 {DETECTION_MAX_RETRIES} 次，请手动检查")
+    _p_log(f"  ✗ 看课检测未通过，已重试 {DETECTION_MAX_RETRIES} 次，请手动检查")
     return False
 
 
@@ -2163,6 +2199,11 @@ async def run_brush_all(
         ok_count = 0
         failed: list[dict] = []
         pending = list(tasks)
+        _total_all = len(tasks)
+        _dash = ProgressDashboard(_total_all)
+        _install_sink(_dash)
+        if _PROGRESS_SINK is None:
+            print("  ── 总进度 %s 0/%d (0%%)  准备开始" % (progress_bar(0.0, 26), _total_all), flush=True)
         while pending:
             batch = pending[:concurrency]
             pending = pending[concurrency:]
@@ -2170,25 +2211,33 @@ async def run_brush_all(
             async def _worker(item):
                 hid, t = item
                 ct = "[校本] " if t.get("contentType") == 11 else ""
-                print(f"\n▶ [{t.get('homeworkId')}] {ct}[{t.get('subjectName', '')}] "
-                      f"{str(t.get('title', ''))[:50]} "
-                      f"[时长{(t.get('duration') or 0)//60}min]", flush=True)
+                _lesson = t.get("lessonId")
+                _label = (ct + "[" + str(t.get("subjectName", "")) + "] "
+                          + str(t.get("title", ""))[:36]
+                          + " [" + str((t.get("duration") or 0) // 60) + "min]")
+                if _PROGRESS_SINK is not None:
+                    _PROGRESS_SINK.start(_lesson, _label)
+                else:
+                    print("\n▶ [%s] %s" % (t.get("homeworkId"), _label), flush=True)
                 try:
                     ok = await _brush_one(client, school_id, hid, t, client.token,
                                           speed, burst_size, phase_offset_ms, force_rounds)
                 except TokenInvalidError:
+                    if _PROGRESS_SINK is not None:
+                        _PROGRESS_SINK.finish(_lesson, False)
                     raise
+                if _PROGRESS_SINK is not None:
+                    _PROGRESS_SINK.finish(_lesson, bool(ok))
                 return (hid, t, ok)
 
             try:
                 results = await asyncio.gather(*[_worker(item) for item in batch])
             except TokenInvalidError:
-                # ---- token 自动续期 ----
                 if login_retries >= MAX_LOGIN_RETRY:
-                    print(f"✗ Token 再次失效，已达自动续期上限 {MAX_LOGIN_RETRY} 次，中止")
+                    print("✗ Token 再次失效，已达上限 %d 次，中止" % MAX_LOGIN_RETRY)
                     break
                 login_retries += 1
-                print(f"\n⚠ Token 失效/被挤下线，自动重新登录（{login_retries}/{MAX_LOGIN_RETRY}）…")
+                print("\n⚠ Token 失效/被挤下线，自动重登（%d/%d）…" % (login_retries, MAX_LOGIN_RETRY))
                 token = await _relogin(account, password)
                 await client.close()
                 client = EwtClient(token)
@@ -2196,14 +2245,13 @@ async def run_brush_all(
                     school_info = await client.fetch_school_info()
                     school_id = int(school_info["schoolId"])
                 except Exception as e:
-                    print(f"✗ 重新登录后仍无法获取学校信息: {_translate_error(str(e))}")
+                    print("✗ 重登后仍无法获取学校信息: " + _translate_error(str(e)))
                     break
-                # 重新扫描剩余课时（已完成自动消失），与未刷批次合并
                 try:
                     remaining = await scan_pending_tasks(client, school_id, hw_filter,
                                                          include_finished=force_all)
                 except Exception as e:
-                    print(f"✗ 重新扫描失败: {_translate_error(str(e))}")
+                    print("✗ 重新扫描失败: " + _translate_error(str(e)))
                     remaining = []
                 pending = remaining + pending
                 continue
@@ -2212,15 +2260,23 @@ async def run_brush_all(
                     ok_count += 1
                 else:
                     failed.append(t)
+            if _PROGRESS_SINK is None:
+                _done = ok_count + len(failed)
+                _pct = (_done / _total_all) if _total_all else 0.0
+                print("  ── 总进度 %s %d/%d (%d%%)  成功 %d  失败 %d"
+                      % (progress_bar(_pct, 26), _done, _total_all,
+                         int(_pct * 100), ok_count, len(failed)), flush=True)
 
-        print(f"\n{'=' * 62}")
-        print(f"处理完成：成功 {ok_count}/{len(tasks)}")
+        _install_sink(None)
+        print("\n" + "=" * 62)
+        print("处理完成：成功 %d/%d" % (ok_count, len(tasks)))
         if failed:
             print("失败课时：")
             for t in failed:
-                print(f"  - {str(t.get('title', ''))[:50]}")
+                print("  - " + str(t.get("title", ""))[:50])
         return 0 if ok_count == len(tasks) else 1
     finally:
+        _install_sink(None)
         await client.close()
 
 
@@ -2318,6 +2374,20 @@ def banner():
     pr()
 
 
+def _normalize_input(s: str) -> str:
+    """全角→半角归一化。解决中文输入法打出“２”而不是“2”的问题。"""
+    out = []
+    for ch in s:
+        code = ord(ch)
+        if code == 0x3000:            # 全角空格
+            out.append(" ")
+        elif 0xFF01 <= code <= 0xFF5E:  # 全角 ASCII 区（数字/字母/符号）
+            out.append(chr(code - 0xFEE0))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def ask(question: str, default=None, hint: str = "") -> str:
     """带默认值的交互提问。"""
     suffix = f" {color('[' + str(default) + ']', C.DIM)}" if default is not None else ""
@@ -2325,10 +2395,11 @@ def ask(question: str, default=None, hint: str = "") -> str:
     if hint:
         pr(color(f"     {hint}", C.DIM))
     try:
-        val = input(color("   ▸ ", C.CYAN)).strip()
+        val = input(color("   ▸ ", C.CYAN))
     except (EOFError, KeyboardInterrupt):
         pr()
         val = ""
+    val = _normalize_input(val).strip()
     if not val and default is not None:
         return str(default)
     return val
@@ -2355,10 +2426,11 @@ def ask_yes(question: str, default: bool = True) -> bool:
     d = "Y/n" if default else "y/N"
     pr(color(f"  {question}", C.B) + f" {color('[' + d + ']', C.DIM)}")
     try:
-        v = input(color("   ▸ ", C.CYAN)).strip().lower()
+        v = input(color("   ▸ ", C.CYAN))
     except (EOFError, KeyboardInterrupt):
         pr()
         return default
+    v = _normalize_input(v).replace(" ", "").strip().lower()
     if not v:
         return default
     return v in ("y", "yes", "是", "1")
@@ -2392,6 +2464,151 @@ def progress_bar(pct: float, width: int = 34) -> str:
     else:
         c = C.YELLOW
     return color(bar, c)
+
+
+def _term_width(default: int = 80) -> int:
+    """终端列宽，留 2 列余量防自动换行。"""
+    try:
+        import shutil
+        w = shutil.get_terminal_size((default, 24)).columns
+    except Exception:
+        w = default
+    return max(30, min(w - 2, 120))
+
+
+def bar_prefix(key) -> str:
+    """面板行前缀：[后6位lessonId] """
+    k = str(key)
+    return "[%s] " % (k[-6:] if len(k) > 6 else k)
+
+
+class ProgressDashboard:
+    """刷课实时面板：总体进度 + 每个并发课时的进度条，原地刷新不刷屏。
+    非交互终端（重定向/管道）自动降级为普通滚动输出。"""
+
+    def __init__(self, total: int):
+        self.total = max(1, int(total))
+        try:
+            self.enabled = bool(sys.stdout.isatty())
+        except Exception:
+            self.enabled = False
+        if os.environ.get("EWT_NO_DASHBOARD"):
+            self.enabled = False   # 环境变量可强制关闭面板，回退滚动输出
+        self.width = _term_width()
+        self.lines = 0      # 已渲染行数
+        self.done = 0
+        self.ok = 0
+        self.fail = 0
+        self.tasks = {}     # key -> [title, pct, detail]
+
+    # ---------------- 内部 ----------------
+    def _fit(self, s: str) -> str:
+        """按可见宽度截断（ANSI 不计宽，中文算 2 列），避免自动换行。"""
+        width = self.width
+        out = []
+        w = 0
+        i = 0
+        n = len(s)
+        _esc = chr(27)
+        while i < n:
+            ch = s[i]
+            if ch == _esc and i + 1 < n and s[i + 1] == "[":
+                j = i + 2
+                while j < n and not ("@" <= s[j] <= "~"):
+                    j += 1
+                j = min(j + 1, n)
+                out.append(s[i:j])
+                i = j
+                continue
+            cw = 2 if ord(ch) > 0x2E80 else 1
+            if w + cw > width - 1:
+                out.append("…")
+                break
+            out.append(ch)
+            w += cw
+            i += 1
+        return "".join(out)
+
+    def _clear(self) -> None:
+        if not self.enabled or self.lines <= 0:
+            return
+        _cr = chr(13)
+        _esc = chr(27)
+        for _ in range(self.lines):
+            sys.stdout.write(_esc + "[1A")
+            sys.stdout.write(_cr + _esc + "[K")
+        sys.stdout.write(_cr)
+        sys.stdout.flush()
+        self.lines = 0
+
+    def _render(self) -> None:
+        if not self.enabled:
+            return
+        self._clear()
+        self.width = _term_width()   # 每次重算，应对窗口缩放
+        _cr = chr(13)
+        _esc = chr(27)
+        pct = self.done / self.total
+        head = ("总体 %s %d/%d (%d%%)　成功 %d 失败 %d"
+                % (progress_bar(pct, 24), self.done, self.total,
+                   int(pct * 100), self.ok, self.fail))
+        buf = [self._fit(color("  " + head, C.B + C.CYAN))]
+        for key, t in self.tasks.items():
+            p, detail = t[1], t[2]
+            buf.append(self._fit("   " + bar_prefix(key)
+                                 + progress_bar(p, 16)
+                                 + " %3d%%  %s" % (int(p * 100), detail)))
+        for line in buf:
+            sys.stdout.write(_cr + _esc + "[K" + line + chr(10))
+        sys.stdout.flush()
+        self.lines = len(buf)
+
+    # ---------------- 对外 ----------------
+    def start(self, key, title: str = "") -> None:
+        key = str(key)
+        self.tasks[key] = [title, 0.0, "开始…"]
+        self._render()
+        if not self.enabled:
+            print("  ▶ " + str(title or key), flush=True)
+
+    def update(self, key, pct: float, detail: str = "") -> None:
+        key = str(key)
+        try:
+            pct = max(0.0, min(1.0, float(pct)))
+        except Exception:
+            pct = 0.0
+        if key in self.tasks:
+            self.tasks[key][1] = pct
+            self.tasks[key][2] = detail
+        else:
+            self.tasks[key] = ["", pct, detail]
+        self._render()
+
+    def finish(self, key, ok: bool = True) -> None:
+        key = str(key)
+        self.tasks.pop(key, None)
+        self.done = min(self.total, self.done + 1)
+        if ok:
+            self.ok += 1
+        else:
+            self.fail += 1
+        self._render()
+        if not self.enabled:
+            pct = self.done / self.total
+            print("  ✓ 完成 " + key + ("" if ok else "（失败）")
+                  + "   总进度 %d/%d (%d%%)" % (self.done, self.total, int(pct * 100)),
+                  flush=True)
+
+    def show_log(self, msg: str) -> None:
+        if not self.enabled:
+            print(msg, flush=True)
+            return
+        self._clear()
+        print(msg, flush=True)
+        self._render()
+
+    def close(self) -> None:
+        self._clear()
 
 
 def human_time(sec: float) -> str:
@@ -2882,6 +3099,10 @@ async def main_menu():
             pr()
 
         choice = ask("请输入数字（0-5）", "1").strip() or "1"
+        # [容错] 输入法可能带全角/多余字符，提取其中唯一数字
+        _only = "".join(ch for ch in choice if ch.isdigit())
+        if len(_only) == 1 and _only in "012345":
+            choice = _only
 
         if choice == "1":
             return "brush", False
