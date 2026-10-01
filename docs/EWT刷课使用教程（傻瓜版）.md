@@ -137,7 +137,7 @@ EWT 作业里除了视频课时，还有一小类「心灵成长/生涯规划」
 | **Mac（苹果电脑）** | **3.1.2** |
 | Linux | 3.1.3 |
 
-装好 Python 后，统一跳到本节末尾的「✅ 通用步骤：装依赖 + 运行」。
+装好 Python 后，统一跳到本节末尾的「✅ 通用步骤：直接运行（依赖自动装）」。
 
 #### 3.1.1 Windows
 
@@ -206,61 +206,19 @@ python3 --version
 > - Arch / Manjaro：`sudo pacman -S python python-pip`
 > - 大多数桌面发行版已自带 python3，可跳过安装、只做验证。
 
-#### ✅ 通用步骤：装依赖 + 运行
+#### ✅ 通用步骤：直接运行（依赖自动装）
 
-**① 安装依赖（使用 requirements.txt 一键安装）**
-仓库自带 `requirements.txt` 依赖清单文件（标准 Python 格式，已列出全部依赖）。**复制脚本时把 `requirements.txt` 也一并拷到同目录**，然后进入脚本目录执行安装：
+**① 把脚本放到一个文件夹**
 
-```bash
-cd 你的脚本目录          # 例如：cd ~/ewt
-pip3 install -r requirements.txt
-```
-> 这一步会自动读取 `requirements.txt` 里列出的全部依赖并逐个安装（当前只有 httpx 和 pycryptodome 两个），无需手动记住要装什么。
+把 `ewt_brush_optimized.py`（单文件版）放到一个文件夹，例如：
 
-**方式二：直接安装（不用 requirements.txt 也可以）**
-如果你没拷 requirements.txt，或想手动装，直接运行等价命令：
-```bash
-pip3 install httpx pycryptodome
-```
-> 这与 `pip3 install -r requirements.txt` 完全等价（因为 requirements.txt 里就是这两行），任选一种即可。
+- Windows：`C:\ewt`
+- macOS / Linux：`~/ewt`
 
-**✅ 验证是否装好**（看到 `OK` 即成功）：
-```bash
-python3 -c "import httpx, Crypto; print('OK')"
-```
+> 💡 **只需这一个文件**，不需要 `requirements.txt`，也不用手动装任何东西。
 
-**📦 requirements.txt 当前内容（共 2 个依赖，缺一不可）：**
-```
-httpx>=0.24.0        # 网络请求库，负责与 EWT 服务器通信
-pycryptodome>=3.19.0 # AES 加密库，负责登录密码加密
-```
-> - `httpx` 是异步 HTTP 客户端，所有 API 请求都靠它
-> - `pycryptodome` 提供 `Crypto` 模块，登录时用 AES-CBC 加密密码
-> - 如果提示 `ModuleNotFoundError`，说明没装全，重跑上面的 `pip3 install -r requirements.txt` 即可
+**② 直接运行（依赖会自动安装）**
 
-**🔧 其他常用依赖命令（傻瓜式）：**
-```bash
-# 已装过依赖但想确认/升级到 requirements.txt 指定版本
-pip3 install -r requirements.txt --upgrade
-
-# 只安装 requirements.txt 里缺失的依赖（不重复装已有的）
-pip3 install -r requirements.txt
-
-# 查看已安装的依赖版本
-pip3 list | grep -E "httpx|pycryptodome"
-```
-> 之后如果脚本升级增加了新依赖，只需更新 `requirements.txt`，用户再跑一次 `pip3 install -r requirements.txt` 即可。
-
-**② 把脚本放到电脑上**
-把 `ewt_brush_optimized.py`（单文件版）放到一个文件夹，例如 Windows 的 `C:\ewt`，Mac / Linux 的 `~/ewt`。
-
-**③ 验证安装**
-```bash
-python3 -c "import httpx, Crypto; print('OK')"
-```
-看到 `OK` 即成功。
-
-**④ 进入文件夹并运行**
 ```bash
 cd 你的脚本目录          # 例如 Windows: cd C:\ewt   /  Mac/Linux: cd ~/ewt
 
@@ -270,6 +228,68 @@ python ewt_brush_optimized.py
 # macOS / Linux 用：
 python3 ewt_brush_optimized.py
 ```
+
+**首次运行会自动检测并安装依赖**，你会看到：
+
+```
+  ==========================================================
+   📦 检测到缺少运行所需的组件，正在自动安装…
+      · httpx
+      · pycryptodome
+  ==========================================================
+   （只需安装一次，请稍候，约 10~60 秒）
+   ✅ httpx 安装成功
+   ✅ pycryptodome 安装成功
+
+  🎉 组件全部就绪，即将启动程序…
+```
+
+> 脚本会自动尝试多种安装方式（`pip` / `pip --user` / `pip3`），**Windows、macOS、Linux、Termux 全兼容**，通常不用你操心。
+
+**③ 若自动安装失败（少见）**
+
+脚本会打印出可直接照抄的手动命令，形如：
+
+```bash
+python3 -m pip install httpx pycryptodome
+
+# 权限不足就加 --user：
+python3 -m pip install --user httpx pycryptodome
+```
+
+装完再运行一次脚本即可。
+
+> ⚠️ 常见失败原因：Python 是精简版（缺 pip）、或公司/学校网络受限。先确认 `python3 -m pip --version` 能正常输出。
+
+**④ 手动验证（可选）**
+
+```bash
+python3 -c "import httpx, Crypto; print('OK')"
+```
+
+看到 `OK` 即依赖齐全。
+
+<details>
+<summary>🔧 进阶：用 requirements.txt 手动装（可选，一般用不到）</summary>
+
+仓库也带了 `requirements.txt`（列出全部 2 个依赖），想手动装的话：
+
+```bash
+pip3 install -r requirements.txt       # 或
+pip3 install httpx pycryptodome
+```
+
+内容如下（缺一不可）：
+
+```
+httpx>=0.24.0        # 网络请求库，负责与 EWT 服务器通信
+pycryptodome>=3.19.0 # AES 加密库，负责登录密码加密
+```
+
+- `httpx` 是异步 HTTP 客户端，所有 API 请求都靠它
+- `pycryptodome` 提供 `Crypto` 模块，登录时用 AES-CBC 加密密码
+
+</details>
 
 ---
 
@@ -318,28 +338,21 @@ pkg update && pkg upgrade -y
 
 ---
 
-**③ 安装 Python 和依赖（用 requirements.txt 一键装）**
+**③ 安装 Python（依赖不用管，脚本会自动装）**
 ```bash
-pkg install -y python            # 第 1 步：装 Python 3（Termux 里 python 命令生效）
-pip install -r requirements.txt  # 第 2 步：用 requirements.txt 一键安装全部依赖
+pkg install -y python            # 只需装 Python 3，依赖交给脚本自动处理
 ```
-> `requirements.txt` 是标准 Python 依赖清单文件（仓库自带），已列出全部依赖（httpx + pycryptodome）。**把 requirements.txt 和脚本放同一目录**，执行上面的命令就会自动装好，无需手动逐个装。
+> 💡 **跑脚本时它会自动检测并安装 httpx / pycryptodome**，不用你手动 pip。
+> 💡 Termux 里 Python 命令是 `python`（电脑端是 `python3`）。
 
-**方式二：直接安装（不用 requirements.txt 也可以）**
-如果你没拷 requirements.txt，或想手动装，直接运行等价命令：
+**✅ 验证 Python（可选）：**
 ```bash
-pip install httpx pycryptodome
-```
-> 这与 `pip install -r requirements.txt` 完全等价（因为 requirements.txt 里就是这两行），任选一种即可。
-
-**✅ 验证是否装好**（看到 `OK` 即成功）：
-```bash
-python -c "import httpx, Crypto; print('OK')"
+python --version
 ```
 
 **⚠️ 常见问题：**
-- 如果报 `No module named httpx` 或 `No module named Crypto`，说明没装全，重跑 `pip install -r requirements.txt` 即可
-- Termux 里 python 用 `python` 命令（电脑端用 `python3`）
+- 若脚本提示自动安装失败，手动补一句：`pip install httpx pycryptodome`
+- 若报 `No module named httpx`，说明依赖没装上，重跑脚本会自动重试
 
 **④ 授权存储访问（关键步骤）**
 
@@ -469,14 +482,12 @@ apk add python3 py3-pip
 python3 --version
 ```
 
-**⑤ 安装依赖**
+**⑤ 依赖：脚本会自动装（无需手动）**
 
-```sh
-pip3 install httpx pycryptodome
-```
+安装好 Python 后，**直接运行脚本，它会自动检测并安装 httpx / pycryptodome**。
 
 > 💡 pycryptodome 官方提供 Alpine 用的 musllinux 预编译包，iSH 里可直接装，**无需编译**。
-> ⚠️ 若 pip 慢，加国内镜像：
+> ⚠️ 若自动安装失败（网络慢），手动加国内镜像装：
 > ```sh
 > pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple httpx pycryptodome
 > ```

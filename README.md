@@ -198,19 +198,15 @@ python ewt_brush_optimized.py --help
 
 ## 🛠 环境要求
 
-- Python **3.10+**
-- **依赖清单（requirements.txt）**：仓库自带 `requirements.txt`，已列出全部依赖（当前仅 2 个），一键安装：
+- Python **3.10+**（装好 Python 即可，**依赖无需手动装**）
+- **依赖自动安装**：脚本首次运行会自动检测并安装 `httpx`、`pycryptodome`，兼容 Windows / macOS / Linux / Termux
+- 若自动安装失败，脚本会打印可照抄的手动命令；也可手动执行：
 
 ```bash
-pip install -r requirements.txt
-
-# 等价于：
-
 pip install httpx pycryptodome
 ```
 
-> `requirements.txt` 是标准 Python 依赖清单文件，`pip install -r requirements.txt` 会按文件内容自动安装所有依赖并校验版本。
-> 当前内容：`httpx>=0.24.0`（网络请求）、`pycryptodome>=3.19.0`（AES 加密登录）。
+> 仓库也带 `requirements.txt`（`httpx>=0.24.0` 网络请求、`pycryptodome>=3.19.0` AES 加密），需要时可用 `pip install -r requirements.txt`。
 
 | 功能 | 说明 |
 |---|---|
@@ -234,8 +230,7 @@ pip install httpx pycryptodome
 ### 方式一：单文件版（新手首选，全平台通用）
 
 ```bash
-pip install httpx pycryptodome   # 首次运行会自动装，也可手动
-python ewt_brush_optimized.py    # 启动图形化菜单
+python ewt_brush_optimized.py    # 首次运行自动装依赖 + 启动图形化菜单
 ```
 
 图形化流程：**主菜单 → 选登录方式 → 扫描 → 选任务范围 → 配置 → 开刷**
@@ -306,8 +301,8 @@ python3 original/spark.py --token YOUR_TOKEN --all
 | **Windows** | 装 [python.org](https://www.python.org/downloads/) 版（勾 Add to PATH）→ `python ewt_brush_optimized.py` | 最省事 |
 | **macOS** | `brew install python` → `python3 ewt_brush_optimized.py` | Apple 芯片原生支持 |
 | **Linux** | `sudo apt install python3 python3-pip` → `python3 ewt_brush_optimized.py` | — |
-| **安卓** | Termux：`pkg install python && pip install httpx pycryptodome` | 推荐，和电脑一致 |
-| **iPhone / iPad** | iSH：`apk add python3 py3-pip && pip3 install httpx pycryptodome` | 可用，但需保持前台 |
+| **安卓** | Termux：`pkg install python` → 跑脚本（依赖自动装） | 推荐，和电脑一致 |
+| **iPhone / iPad** | iSH：`apk add python3 py3-pip` → 跑脚本（依赖自动装） | 可用，但需保持前台 |
 
 ### 各平台细则
 
@@ -330,8 +325,7 @@ python3 ewt_brush_optimized.py
 
 **安卓（Termux，推荐）**
 ```bash
-pkg install -y python
-pip install httpx pycryptodome
+pkg install -y python                 # 依赖由脚本自动安装
 termux-setup-storage                  # 授权存储
 termux-wake-lock                      # 防息屏断网
 cd /storage/emulated/0/你的脚本目录
@@ -340,8 +334,7 @@ python3 ewt_brush_optimized.py
 
 **iPhone / iPad（iSH）**
 ```sh
-apk add python3 py3-pip
-pip3 install httpx pycryptodome
+apk add python3 py3-pip               # 依赖由脚本自动安装
 cd /root/ewt && python3 ewt_brush_optimized.py
 # ⚠️ iSH 必须保持前台，别锁屏、别切走
 ```
