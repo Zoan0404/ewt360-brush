@@ -9,8 +9,11 @@
 ## 目录
 1. [这是什么？能干什么？](#1-这是什么能干什么)
 2. [文件说明（为什么 easy 这么小）](#2-文件说明为什么-easy-这么小)
-3. [傻瓜式用法（电脑 & 手机）](#3-傻瓜式用法电脑--手机)
-   - 3.3 [如何查看进度（重点）](#33-如何查看进度重点)
+3. [傻瓜式用法（电脑 / 安卓 / iPhone）](#3-傻瓜式用法电脑--手机--iphone)
+   - 3.1 [电脑端（Windows / macOS / Linux）](#31-️-电脑端windows--macos--linux)
+   - 3.2 [安卓手机（Termux / Pydroid3）](#32--手机端termux-推荐--pydroid3-备选)
+   - 3.3 [iPhone / iPad（iOS）](#33--iphone--ipadios)
+   - 3.4 [如何查看进度（重点）](#34--如何查看进度重点)
 4. [概念详解：刷课到底在刷什么](#4-概念详解刷课到底在刷什么)
 5. [参数详解：每个数字是什么意思](#5-参数详解每个数字是什么意思)
 6. [效率指标：刷课时长 ÷ 视频总时长](#6-效率指标刷课时长--视频总时长)
@@ -107,11 +110,11 @@ EWT 作业里除了视频课时，还有一小类「心灵成长/生涯规划」
 
 ---
 
-## 3. 傻瓜式用法（电脑 & 手机）
+## 3. 傻瓜式用法（电脑 & 手机 & iPhone）
 
-> 两个平台用同一个脚本，区别只在**怎么装 Python**。先看完通用流程，再按你的设备选下面 3.1 或 3.2。
+> Windows / macOS / Linux / 安卓 / iPhone 用同一个脚本，区别只在**怎么装 Python**。先看完通用流程，再按你的设备选下面的：电脑 3.1 / 安卓手机 3.2 / iPhone 3.3。
 
-### 通用流程（两端一样）
+### 通用流程（各端一样）
 ```
 运行 ewt_brush_optimized.py（单文件版）→ 选登录方式 → 自动扫描 → 选任务范围 → 输配置 → 开刷
 【第 1 步】账号 / 密码        ← 输入你的账号密码（下次自动记住）
@@ -126,15 +129,86 @@ EWT 作业里除了视频课时，还有一小类「心灵成长/生涯规划」
 
 ### 3.1 🖥️ 电脑端（Windows / macOS / Linux）
 
-**① 安装 Python（3.10 以上）**
-- **Windows**：到 [python.org](https://www.python.org/downloads/) 下载安装包 → 安装时**务必勾选 "Add Python to PATH"** → 装完打开"命令提示符"（Win+R 输入 `cmd`）验证：
-  ```bat
-  python --version
-  ```
-- **macOS**：安装 [Homebrew](https://brew.sh/) 后执行 `brew install python`
-- **Linux（Ubuntu/Debian）**：`sudo apt install -y python3 python3-pip`
+> 三个系统用同一个脚本，区别只是**怎么装 Python**。先找到你的系统：
 
-**② 安装依赖（使用 requirements.txt 一键安装）**
+| 你的电脑 | 看哪一节 |
+|---|---|
+| Windows | 3.1.1 |
+| **Mac（苹果电脑）** | **3.1.2** |
+| Linux | 3.1.3 |
+
+装好 Python 后，统一跳到本节末尾的「✅ 通用步骤：装依赖 + 运行」。
+
+#### 3.1.1 Windows
+
+**① 安装 Python（3.10 以上）**
+
+到 [python.org](https://www.python.org/downloads/) 下载安装包 → 安装时**务必勾选 "Add Python to PATH"** → 装完打开"命令提示符"（Win+R 输入 `cmd`）验证：
+
+```bat
+python --version
+```
+
+看到 `Python 3.x.x` 即成功。
+
+> ⚠️ 如果提示"不是内部或外部命令"，说明没勾 PATH。重新运行安装包 → 选 "Modify" → 把 "Add Python to PATH" 勾上 → 再验证。
+
+#### 3.1.2 macOS（苹果电脑）
+
+**① 安装 Homebrew（macOS 的软件包管理器，只需装一次）**
+
+打开「终端」（按 `Command + 空格`，输入"终端"或"Terminal"），粘贴运行：
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+> - 中途会要求输入**电脑登录密码**，输入时屏幕不显示任何字符，这是正常的，输完回车等它跑完。
+> - Apple 芯片（M1/M2/M3/M4）装完后可能提示执行类似 `echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile` 的命令，**照抄执行**即可。
+
+**② 用 Homebrew 安装 Python**
+
+```bash
+brew install python
+```
+
+**③ 验证**
+
+```bash
+python3 --version
+```
+
+看到 `Python 3.1x.x` 即成功。
+
+> 💡 macOS 自带一个 `python3`，但版本较老、pip 环境不完整，**建议按上面用 Homebrew 装一个干净的**。
+> 💡 如果 `brew install python` 卡在 "Updating Homebrew" 很久，按 `Ctrl + C` 取消更新，再重跑一次通常就能装上。
+> 💡 装完如果 `python3` 提示找不到，重开一个终端窗口，或执行上一步 `brew shellenv` 那行命令。
+> 💡 Apple 芯片用户注意：终端里命令走的是原生 arm64，无需 Rosetta，直接照上面操作即可。
+
+#### 3.1.3 Linux
+
+**① 安装 Python**
+
+```bash
+# Ubuntu / Debian 系
+sudo apt update
+sudo apt install -y python3 python3-pip
+```
+
+**② 验证**
+
+```bash
+python3 --version
+```
+
+> 其他发行版：
+> - Fedora / CentOS / RHEL：`sudo dnf install -y python3 python3-pip`
+> - Arch / Manjaro：`sudo pacman -S python python-pip`
+> - 大多数桌面发行版已自带 python3，可跳过安装、只做验证。
+
+#### ✅ 通用步骤：装依赖 + 运行
+
+**① 安装依赖（使用 requirements.txt 一键安装）**
 仓库自带 `requirements.txt` 依赖清单文件（标准 Python 格式，已列出全部依赖）。**复制脚本时把 `requirements.txt` 也一并拷到同目录**，然后进入脚本目录执行安装：
 
 ```bash
@@ -177,19 +251,24 @@ pip3 list | grep -E "httpx|pycryptodome"
 ```
 > 之后如果脚本升级增加了新依赖，只需更新 `requirements.txt`，用户再跑一次 `pip3 install -r requirements.txt` 即可。
 
-**③ 把脚本文件夹放到电脑上**
-把 `ewt_brush_optimized.py` + `ewt_brush_optimized.py`（V3 推荐）放到同一个文件夹，例如 `C:\ewt` 或 `~/ewt`。
+**② 把脚本放到电脑上**
+把 `ewt_brush_optimized.py`（单文件版）放到一个文件夹，例如 Windows 的 `C:\ewt`，Mac / Linux 的 `~/ewt`。
 
-**④ 验证安装**
+**③ 验证安装**
 ```bash
 python3 -c "import httpx, Crypto; print('OK')"
 ```
 看到 `OK` 即成功。
 
-**⑤ 进入文件夹并运行**
+**④ 进入文件夹并运行**
 ```bash
 cd 你的脚本目录          # 例如 Windows: cd C:\ewt   /  Mac/Linux: cd ~/ewt
+
+# Windows 用：
 python ewt_brush_optimized.py
+
+# macOS / Linux 用：
+python3 ewt_brush_optimized.py
 ```
 
 ---
@@ -348,6 +427,7 @@ python ewt_brush_optimized.py                  # 3. 开刷（已完成的自动�
 5. 注意：Pydroid 是前台应用，**息屏可能暂停**，建议刷课时保持亮屏并插电
 
 #### 手机端注意事项
+
 | 事项 | 说明 |
 |---|---|
 | token 路径 | 傻瓜入口**已自动处理**（存 /tmp），无需手动设置 `EWT_TOKEN_FILE` |
@@ -359,7 +439,106 @@ python ewt_brush_optimized.py                  # 3. 开刷（已完成的自动�
 
 ---
 
-### 3.3 📊 如何查看进度（重点！）
+### 3.3 🍎 iPhone / iPad（iOS）
+
+> iOS 系统限制严格，**没有安卓 Termux 那样的原生终端**，但可以用免费 App **iSH**（Alpine Linux 模拟器）跑起来。
+> 先说结论：**能用，但比安卓慢**（iSH 是模拟运行）。本脚本是网络密集型，可正常刷课，只是启动略慢、必须保持前台。
+
+#### 方案一：iSH（免费，推荐）
+
+**① 安装 App**
+
+App Store 搜索 **iSH Shell** → 下载安装（免费）。
+
+**② 打开 iSH，换国内源（可选，加速）**
+
+```sh
+sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+```
+
+**③ 安装 Python 和 pip**
+
+```sh
+apk update
+apk add python3 py3-pip
+```
+
+**④ 验证**
+
+```sh
+python3 --version
+```
+
+**⑤ 安装依赖**
+
+```sh
+pip3 install httpx pycryptodome
+```
+
+> 💡 pycryptodome 官方提供 Alpine 用的 musllinux 预编译包，iSH 里可直接装，**无需编译**。
+> ⚠️ 若 pip 慢，加国内镜像：
+> ```sh
+> pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple httpx pycryptodome
+> ```
+
+**⑥ 把脚本放进 iSH**
+
+两种方式任选：
+
+- **方式 A（用「文件」App）**
+
+  1. 在 iOS「文件」App 里把 `ewt_brush_optimized.py` 存到「我的 iPhone」
+  2. 回到 iSH 执行：
+
+  ```sh
+  mkdir -p /root/ewt
+  ls /mnt/root/                       # 查看「我的 iPhone」里的实际文件名
+  cp "/mnt/root/ewt_brush_optimized.py" /root/ewt/
+  cd /root/ewt && ls
+  ```
+
+  > iSH 里「我的 iPhone」的路径一般是 `/mnt/root/`；找不到就先用 `ls /mnt/root/` 看看。
+
+- **方式 B（直接用 curl 下载）**
+
+  ```sh
+  mkdir -p /root/ewt && cd /root/ewt
+  curl -L -o ewt_brush_optimized.py "https://raw.githubusercontent.com/Zoan0404/ewt360-brush/main/ewt_brush_optimized.py"
+  ls -la
+  ```
+
+**⑦ 运行**
+
+```sh
+cd /root/ewt
+python3 ewt_brush_optimized.py
+```
+
+之后按屏幕提示：选登录方式 → 自动扫描 → 选刷课范围 → 输配置 → 开刷。
+
+#### 方案二：Pythonista（付费 App，约 ¥68）
+
+- 内置 Python 3 + pip，能直接编辑运行 `.py`，界面友好
+- ⚠️ **但它装不了带 C 扩展的 `pycryptodome`**，会导致账号密码登录的 AES 加密失败
+- 因此**不推荐**用它跑本脚本，除非你只用「手动粘贴 token」登录
+
+#### ⚠️ iOS 注意事项
+
+| 事项 | 说明 |
+|---|---|
+| **必须保持前台** | iOS 会冻结后台 App，刷课期间 **iSH 要一直开着**，别切走、别锁屏 |
+| 自动锁屏 | 设置 → 显示与亮度 → 自动锁定 → 改成「永不」，刷完记得改回 |
+| 锁屏会断 | 锁屏后 iSH 被暂停，任务中断；重新打开会继续（进度不丢） |
+| 耗电 | 刷课期间务必插电，屏幕常亮很费电 |
+| 速度 | iSH 为模拟运行，比安卓 Termux 慢，属正常现象 |
+| 网络 | 手机 IP 与电脑不同，风控独立；Wi-Fi 不稳建议用流量 |
+| **最省心方案** | 有电脑/安卓机时，**建议用它们刷**，iPhone 只看进度 |
+
+> 一句话总结：**iPhone 能跑（用 iSH），但更适合当"查看进度"的工具；真正长时间刷课，建议用电脑或安卓。**
+
+---
+
+### 3.4 📊 如何查看进度（重点！）
 
 刷课过程中随时可以查看进度，三种方式任选：
 
@@ -530,6 +709,7 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 - ⚠️ **陷阱**：填 `0` 并不会不限速！脚本代码 `if qps and qps > 0` 导致 qps=0 时不生效，反而退化为默认 120/分钟（更慢）。本工具已自动把 0 改成 100000。
 
 ### 5.5 其他参数（高级用户用）
+
 | 参数 | 作用 |
 |---|---|
 | `--dry-run` | 只扫描不刷课（本工具第 2 步自动执行） |
@@ -636,10 +816,15 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 | `连接被拒绝` | 并发过高 | 降到 12路 或更低 |
 | `没有未完成的课时` | **全部刷完 ✅** | 无需操作，等新作业发布 |
 | 想重刷已完成的课时 | 扫描默认跳过已完成 | 用 `--force-all`，详见第 12 章 |
-| 作业显示还有 FM 课时没完成（心灵成长/生涯规划） | 正式版只刷视频 | 用**V3 引擎**（`ewt_brush_optimized.py` 或 `ewt_brush_optimized.py`）自动直写 FM/板报 |
+| 作业显示还有 FM 课时没完成（心灵成长/生涯规划） | 正式版只刷视频 | 用**单文件版**（`ewt_brush_optimized.py`）自动直写 FM/板报 |
 | 刷完显示"未通过" | 看课检测问题 | **无需操作**：机制C 自动重刷最多3次；仍不行本工具自动补刷 |
 | Windows UnicodeEncodeError（中文乱码）| 控制台编码问题 | 脚本已内置 UTF-8 加固，直接运行即可；若仍报错，PowerShell 执行 `$env:PYTHONUTF8="1" ; py ewt_brush_optimized.py`，CMD 执行 `set PYTHONUTF8=1 && py ewt_brush_optimized.py` |
 | 单个课时失败（连接/WAF超限） | 偶发网络/风控 | **无需操作**：本工具自动补刷（最多3轮），已完成的自动跳过 |
+| macOS 提示 `command not found: brew` | 没装 Homebrew | 按 3.1.2 先装 Homebrew，或重开终端 |
+| macOS 提示 `command not found: python3` | Python 未装/路径未生效 | 重开终端，或执行 `brew shellenv` 那行命令 |
+| iPhone（iSH）装 pycryptodome 失败 | 网络/pip 源问题 | 加国内源重装：`pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple httpx pycryptodome` |
+| iPhone 刷一会儿就停了 | iOS 冻结了后台 App | **iSH 必须保持前台**，设置里把自动锁定改为"永不" |
+| iPhone 用 Pythonista 登录失败 | 它装不了 pycryptodome | 改用 iSH，或只用"手动粘贴 token"登录 |
 
 ---
 

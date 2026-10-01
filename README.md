@@ -229,7 +229,9 @@ pip install httpx pycryptodome
 
 ## 🚀 快速开始
 
-### 方式一：单文件版（新手首选）
+> **不知道自己是哪个系统？** 先看 [各平台运行方式](#-各平台运行方式) 找到你的系统，再回来按下面的方式跑。
+
+### 方式一：单文件版（新手首选，全平台通用）
 
 ```bash
 pip install httpx pycryptodome   # 首次运行会自动装，也可手动
@@ -295,16 +297,56 @@ python3 original/spark.py --token YOUR_TOKEN --all
 
 ---
 
-## 📱 手机端（Termux）
+## 🖥️📱 各平台运行方式
 
+> 单文件版在所有平台通用，区别只是**怎么装 Python**。详细图文见 [教程](docs/EWT刷课使用教程（傻瓜版）.md)。
+
+| 平台 | 怎么运行 | 说明 |
+|---|---|---|
+| **Windows** | 装 [python.org](https://www.python.org/downloads/) 版（勾 Add to PATH）→ `python ewt_brush_optimized.py` | 最省事 |
+| **macOS** | `brew install python` → `python3 ewt_brush_optimized.py` | Apple 芯片原生支持 |
+| **Linux** | `sudo apt install python3 python3-pip` → `python3 ewt_brush_optimized.py` | — |
+| **安卓** | Termux：`pkg install python && pip install httpx pycryptodome` | 推荐，和电脑一致 |
+| **iPhone / iPad** | iSH：`apk add python3 py3-pip && pip3 install httpx pycryptodome` | 可用，但需保持前台 |
+
+### 各平台细则
+
+**Windows**
+```bat
+python ewt_brush_optimized.py
+```
+
+**macOS**
+```bash
+brew install python                 # 只需装一次
+python3 ewt_brush_optimized.py
+```
+
+**Linux**
+```bash
+sudo apt install -y python3 python3-pip   # Debian/Ubuntu 系
+python3 ewt_brush_optimized.py
+```
+
+**安卓（Termux，推荐）**
 ```bash
 pkg install -y python
 pip install httpx pycryptodome
-termux-setup-storage           # 授权存储
+termux-setup-storage                  # 授权存储
+termux-wake-lock                      # 防息屏断网
 cd /storage/emulated/0/你的脚本目录
-termux-wake-lock               # 防息屏断网
-cd legacy/v3 && python3 ewt_brush_easy_v3.py   # V3 傻瓜入口（推荐）
+python3 ewt_brush_optimized.py
 ```
+
+**iPhone / iPad（iSH）**
+```sh
+apk add python3 py3-pip
+pip3 install httpx pycryptodome
+cd /root/ewt && python3 ewt_brush_optimized.py
+# ⚠️ iSH 必须保持前台，别锁屏、别切走
+```
+
+> iOS 也可用 **Pythonista**，但它装不了 `pycryptodome`（C 扩展），无法用账号密码登录，故不推荐。
 
 ---
 
