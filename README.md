@@ -42,16 +42,47 @@ EWT360 是网课平台，老师布置的作业中包含大量视频课时，需�
 | 版本 | 文件 | 说明 |
 |---|---|---|
 | **Optimized 单文件版** 🌟 | `ewt_brush_optimized.py` | **新手首推**。引擎+界面合并为一个文件，无需其他脚本。图形化主菜单、自动装依赖、内置新手说明、3 种登录方式（账号密码/扫码/token）、作业完成总览、任务详情查看、刷课模式可选。 |
-| **V3 正式版** ⭐ | `ewt_brush_v3.py` + `ewt_brush_easy_v3.py` | **推荐使用**。基于 V2 增强，新增 FM/板报 `updateMission` 直写 100%、clog 播放日志补发、过课检测参数优化、登录签名头降风控、**课时级进度条面板**、判定阈值 0.8 优化、进度延迟复核防重刷。 |
-| **v3-test 测试版** 🧪 | `ewt_brush_v3_test.py` + `ewt_brush_easy_v3_test.py` | 最新实验性优化：作业列表快路径（`status=0` 一次拉取全部作业含已截止，扫描请求 3+ 次 → 1 次）；其余能力与 V3 正式版一致。供尝鲜测试，稳定后并入正式版。 |
-| **V2 稳定版** | `ewt_brush_v2.py` + `ewt_brush_easy.py` | 原版保留，稳定可靠，只刷视频课时。 |
+| **V3 正式版** ⭐ | `legacy/v3/` 下（ewt_brush_v3.py + easy_v3.py）| **推荐使用**。基于 V2 增强，新增 FM/板报 `updateMission` 直写 100%、clog 播放日志补发、过课检测参数优化、登录签名头降风控、**课时级进度条面板**、判定阈值 0.8 优化、进度延迟复核防重刷。 |
+| **v3-test 测试版** 🧪 | `legacy/v3-test/` 下 | 最新实验性优化：作业列表快路径（`status=0` 一次拉取全部作业含已截止，扫描请求 3+ 次 → 1 次）；其余能力与 V3 正式版一致。供尝鲜测试，稳定后并入正式版。 |
+| **V2 稳定版** | `legacy/v2/` 下 | 原版保留，稳定可靠，只刷视频课时。 |
 
 ---
 
-## ✨ 功能特性（V3）
+## ✨ 功能特性
 
+### 🌟 Optimized 单文件版（新手首推）
 | 功能 | 说明 |
 |---|---|
+| 📦 单文件 | 引擎+界面合并，无需其他脚本，不会再有「找不到主脚本」 |
+| 📥 自动装依赖 | 首次运行自动检测并安装 httpx / pycryptodome |
+| 🖥 图形化主菜单 | 不用记任何命令，选数字即可 |
+| 📖 内置新手说明 | 主菜单选 [5] 直接查看使用指引 |
+| 🎨 彩色界面 | 进度条、状态一目了然 |
+| 🔐 三种登录 | 账号密码 / **扫码** / 手动 token |
+| 📱 扫码登录 | 支持 **R** 刷新二维码、**Q** 取消、过期自动刷新 |
+| 📊 作业总览 | 每个作业的进度条 + 已完成/总数 + 状态 |
+| 📋 任务详情 | 可列 **全部 / 未完成 / 已完成 / 按作业**，含归属作业列 |
+| ⚙️ 配置全可选 | 实例数 / 并发 / 爆发 / QPS / **刷课模式**（传统或快速复核）|
+
+### ⭐ 引擎核心能力（Optimized 与 V3 共有）
+| 功能 | 说明 |
+|---|---|
+| 🔐 自动登录 | 账号密码 AES 加密 → oauth 登录，无需手动抓 token |
+| 🔍 自动扫描 | 识别全部未完成课时（含时长），只刷必学科目 |
+| ⚡ 竞态爆发加速 | 单课时内 N 路并发上报，等效 ~5x 加速（--burst 可调） |
+| 🚦 WAF 风控兜底 | 拦截自动冷却 120s 重试（最多 2 次） |
+| 🔄 token 自动续期 | 被挤下线自动重新登录（最多 3 次），任务不中断 |
+| 🎯 看课检测三重机制 | 弹题绕过 / 检测置过 / 未通过自动重刷（最多 3 次） |
+| 🧩 多实例并行 | 自动分片（offset/limit）+ 错峰（phase-offset） |
+| 📊 实时进度 | 命令行进度条 / 日志文件，实时可见 |
+| ✅ 自动验证 | 刷完自动重扫确认，失败课时自动补刷（最多 3 轮） |
+| 🆕 FM/板报直写 | FM 收听 / 板报课时 `updateMission` 一次直写 100% |
+| 📡 clog 补发 | 完成判定后补发播放日志，提高完成率 |
+| 🚀 快速复核模式 | 可选开关，间隔 0.2 秒高频爆发 + 达标即停 |
+| 🛡 并发重试 | 扫描时失败科目/日期组自动重试 2 次，**防漏课时** |
+| 🆕 原始版本保留 | 收录原作者 spark.py 未修改版本（详见下方） |
+
+---|---|
 | 🔐 自动登录 | 账号密码 AES 加密 → oauth 登录，无需手动抓 token |
 | 🔍 自动扫描 | 识别全部未完成课时（含时长），只刷必学科目 |
 | ⚡ 竞态爆发加速 | 单课时内 N 路并发上报，等效 ~5x 加速（--burst 可调） |
@@ -71,25 +102,32 @@ EWT360 是网课平台，老师布置的作业中包含大量视频课时，需�
 
 ```
 ewt360-brush/
-├── ewt_brush_optimized.py   # 🌟 单文件完整版（新手首推，含图形化菜单）
-├── ewt_brush_v3.py          # ⭐ V3 引擎（推荐，功能最全）
-├── ewt_brush_v3_test.py     # 🧪 v3-test 测试版引擎（作业列表快路径 status=0）
-├── ewt_brush_easy_v3_test.py # 🧪 v3-test 傻瓜入口
-├── ewt_brush_easy_v3.py     # ⭐ V3 傻瓜式入口（提问式引导）
-├── v2/                      # V2 稳定版（单独文件夹）
-│   ├── ewt_brush_v2.py      #   V2 引擎
-│   └── ewt_brush_easy.py    #   V2 傻瓜式入口
-├── requirements.txt         # 依赖（仅 2 个）
-├── LICENSE                  # MIT License
-├── original/                # 原作者原始脚本（存档与溯源）
-│   ├── spark.py             #   原作者 spark 脚本（v1，未修改，1865行）
-│   └── README.md            #   原始版说明与对比表
+├── ewt_brush_optimized.py     # 🌟 单文件完整版（新手首推，含图形化菜单）
+├── requirements.txt           # 依赖清单
+├── LICENSE                    # MIT License
+├── legacy/                    # 📦 历史版本（存档）
+│   ├── v3/                    #   V3 正式版
+│   │   ├── ewt_brush_v3.py         # V3 引擎
+│   │   └── ewt_brush_easy_v3.py    # V3 傻瓜入口
+│   ├── v3-test/               #   v3-test 测试版
+│   │   ├── ewt_brush_v3_test.py
+│   │   └── ewt_brush_easy_v3_test.py
+│   └── v2/                    #   V2 稳定版
+│       ├── ewt_brush_v2.py
+│       └── ewt_brush_easy.py
+├── original/                  # 📜 原作者原始脚本（存档与溯源）
+│   ├── spark.py               #   原作者 spark 脚本（未修改）
+│   └── README.md              #   原始版说明与对比表
 └── docs/
-    └── EWT刷课使用教程（傻瓜版）.md  # 详细图文教程
+    └── EWT刷课使用教程（傻瓜版）.md   # 详细图文教程
 ```
 
-> 设计理念：easy 只是遥控器（引导/调度/监控），刷课逻辑全在引擎里，代码不重复、易维护。
-> V3 与 V2 分开放置，互不干扰。
+> 💡 **设计理念**
+> - **根目录只有 Optimized**：新用户只需认准这一个文件，不会被多个版本搞晕。
+> - **历史版本收进 legacy/**：V3 / v3-test / V2 统一存放，想用哪个进对应文件夹运行。
+> - **original/** 保留原作者脚本，用于溯源与致敬。
+>
+> ⚠️ 历史版本的两个文件需**放同一目录**运行（easy 会自动找同目录的引擎）。
 
 ---
 
@@ -217,7 +255,7 @@ python ewt_brush_optimized.py    # 启动图形化菜单
 ### 方式二：傻瓜式交互（V3）
 
 ```bash
-python3 ewt_brush_easy_v3.py
+cd legacy/v3 && python3 ewt_brush_easy_v3.py
 ```
 
 按提示依次输入：**账号 → 密码 → 自动扫描 → 实例数/concurrency/burst/qps → Y 确认**
@@ -228,16 +266,16 @@ python3 ewt_brush_easy_v3.py
 
 ```bash
 # 预检扫描（先看有哪些课时）
-python3 ewt_brush_v3.py --dry-run --account 你的账号 --password 你的密码
+cd legacy/v3 && python3 ewt_brush_v3.py --dry-run --account 你的账号 --password 你的密码
 
 # 🏆 新手推荐：单实例高路数极速刷（实测 3 分 21 秒刷完 400 分钟视频）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
     --concurrency 18 --burst 48 --qps 100000
 
 # 若想多实例并行（进阶，需手动分片）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 0   --limit 25
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+cd legacy/v3 && python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 25  --limit 25 --phase-offset 5000
 ```
 
@@ -267,7 +305,7 @@ pip install httpx pycryptodome
 termux-setup-storage           # 授权存储
 cd /storage/emulated/0/你的脚本目录
 termux-wake-lock               # 防息屏断网
-python3 ewt_brush_easy_v3.py   # V3 傻瓜入口（推荐）
+cd legacy/v3 && python3 ewt_brush_easy_v3.py   # V3 傻瓜入口（推荐）
 ```
 
 ---
@@ -289,7 +327,7 @@ python3 ewt_brush_easy_v3.py   # V3 傻瓜入口（推荐）
 
 > **🏆 新手推荐参数（直接抄）**：
 > ```bash
-> python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
+> cd legacy/v3 && python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
 > ```
 > **单实例 18路 + burst48 + 不限速**，实测 1578 分钟视频 3 分 21 秒刷完，稳定、无需开多实例。
 
@@ -328,7 +366,7 @@ python3 ewt_brush_easy_v3.py   # V3 傻瓜入口（推荐）
 
 **💥 最新实测**：`单实例 18路 | QPS 100000 | burst 48` → **1578 分钟视频（约407小时）仅 3 分 21 秒刷完**，123 课时全部一次通过，无重刷、无卡顿。
 ```bash
-python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
+cd legacy/v3 && python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000
 ```
 
 > **🏆 新手推荐配置：**

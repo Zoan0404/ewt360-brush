@@ -1,7 +1,7 @@
 # 🚀 EWT360 傻瓜式刷课工具 — 完整使用教程
 
-> 版本：v2.0（2026-08-16）
-> 推荐文件：`ewt_brush_easy_v3.py`（傻瓜入口）+ `ewt_brush_v3.py`（刷课引擎）  两文件要放同一目录下
+> 版本：v3.0（2026-10-01）
+> **推荐文件**：`ewt_brush_optimized.py`（单文件完整版，无需其他文件）
 > 一句话：**运行后按提示回答几个问题，自动完成登录、识别课时、刷课、监控、验证。**
 
 ---
@@ -42,57 +42,69 @@ EWT360（升学 e网通）是一个网课平台，老师会布置**作业**，�
 
 ---
 
-## 2. 文件说明（V3 正式版 为主，V2 稳定版备用）
+## 2. 文件说明
 
-仓库同时提供 **V3 正式版**（推荐）和 **V2 稳定版**（备用），分开放置互不干扰。
+### 🌟 推荐：单文件版（新手首选）
 
-| 文件 | 大小 | 角色 | 说明 |
-|---|---|---|---|
-| `ewt_brush_v3.py` | ~84 KB | ⭐ **V3 引擎**（推荐） | 最新正式版，功能最全：
-- FM/板报 `updateMission` 直写 100%
-- clog 播放日志补发（提高完成率）
-- 登录签名头（降风控）
-- 过课检测参数优化
-- 判定阈值 0.8（平台真实阈值）
-- 进度延迟复核防重刷
-- 配置无上限
-- Windows UTF-8 加固（无乱码） |
-| `ewt_brush_easy_v3.py` | ~25 KB | ⭐ **V3 傻瓜入口**（推荐） | 问答式引导，自动多实例分片 + 课时级进度条面板，配置无上限 |
-| `v2/ewt_brush_v2.py` | ~72 KB | V2 引擎（稳定版） | 原版保留，只刷视频课时 |
-| `v2/ewt_brush_easy.py` | ~14 KB | V2 傻瓜入口（稳定版） | 原版简单引导 |
-| `requirements.txt` | — | 依赖清单 | `pip install -r requirements.txt` 一键安装（httpx + pycryptodome） |
-| `EWT刷课使用教程（傻瓜版）.md` | — | 本教程 | |
+仓库根目录只有**一个** Python 文件，认准它就行：
 
-> 🏆 **选哪个？**
-> - **V3 正式版**（推荐）：功能最全，支持 FM/板报直写、进度条面板、配置无上限，Windows 无乱码。
-> - **V2 稳定版**（备用）：在 `v2/` 文件夹，稳定但只刷视频课时。
+| 文件 | 角色 | 说明 |
+|---|---|---|
+| `ewt_brush_optimized.py` | 🌟 **单文件完整版** | 引擎+界面合并，**无需其他文件**。图形化菜单、自动装依赖、3种登录、作业总览、任务详情、刷课模式可选 |
 
-> **什么是 FM 课时？** EWT 作业里除了视频课时，还有一小类"心灵成长/生涯规划"音频（平台叫 FM，2~6 分钟一条）。**V3 引擎**通过 `updateMission` 接口直接直写这些课时为完成（见 12.3）；**V2 引擎**只处理视频（contentType 1/11），不处理 FM。
+```bash
+python ewt_brush_optimized.py
+```
 
-### 为什么 easy（遥控器）这么小？——因为它一行刷课代码都没有
+> ✅ 不会再出现「找不到主脚本」问题——因为只有一个文件。
 
-`ewt_brush_easy_v3.py`（V3 傻瓜入口）的 12 个函数全是"调度活"：
+### 📦 历史版本（都在 legacy/ 文件夹）
+
+| 文件夹 | 文件 | 说明 |
+|---|---|---|
+| `legacy/v3/` | ewt_brush_optimized.py + ewt_brush_optimized.py | V3 正式版 |
+| `legacy/v3-test/` | ewt_brush_v3_test.py + easy_v3_test.py | v3-test 测试版 |
+| `legacy/v2/` | ewt_brush_v2.py + ewt_brush_easy.py | V2 稳定版（只刷视频）|
+| `original/` | spark.py | 原作者脚本（存档）|
+
+用法（以 V3 为例）：
+
+```bash
+cd legacy/v3
+python ewt_brush_optimized.py
+```
+
+> ⚠️ 历史版本的**两个文件需放同一目录**运行（easy 会自动找同目录引擎）。
+
+### 🏆 选哪个？
+
+- **单文件版**（推荐）：一个文件搞定，功能最全，新手最省心。
+- **V3 正式版**：双文件模式，功能与单文件版一致。
+- **V2 稳定版**：只刷视频课时，不处理 FM/板报。
+
+### 什么是 FM 课时？
+
+EWT 作业里除了视频课时，还有一小类「心灵成长/生涯规划」音频（平台叫 FM，2~6 分钟一条）。
+
+- **单文件版 / V3**：通过 `updateMission` 接口直接直写完成
+- **V2**：只处理视频（contentType 1/11），不处理 FM
+
+### 为什么历史版本的 easy「遥控器」那么小？
+
+`ewt_brush_optimized.py` 里全是「调度活」，一行刷课代码都没有：
 
 | easy 的函数 | 干什么 |
 |---|---|
-| `ask / ask_int` | 问你问题（账号、密码、配置），带默认值 |
-| `scan_tasks` | 调引擎的 `--dry-run` 扫描课时清单 |
-| `build_cmd / start_instances` | **拼命令行**（`--concurrency`/`--burst`/`--qps`/`--offset`/`--phase-offset`）并启动引擎子进程 |
-| `monitor / count_in_log` | 读引擎写的日志，实时统计完成/错误/WAF |
-| `main` | 串起整个流程（提问→扫描→启动→监控→验证→补刷） |
+| `ask / ask_int` | 问你问题（账号、密码、配置）|
+| `scan_tasks` | 调引擎 `--dry-run` 扫描课时清单 |
+| `build_cmd / start_instances` | 拼命令行并启动引擎子进程 |
+| `monitor` | 读引擎日志，实时统计完成/错误/WAF |
+| `main` | 串起整个流程（提问→扫描→启动→监控→验证）|
 
-而真正的大头全在**引擎**（V3 有 60+ 个函数）：AES 加密登录、HMAC-SHA1 签名、令牌桶限速、竞态爆发、WAF 冷却重试、token 续期、弹题绕过、看课检测三重机制、FM/板报直写、clog 补发…… **easy 完全不重复这些，直接调用引擎即可。**
+真正的大头全在**引擎**（60+ 个函数）：AES 加密登录、HMAC-SHA1 签名、令牌桶限速、竞态爆发、WAF 冷却重试、token 续期、弹题绕过、看课检测三重机制、FM/板报直写、clog 补发……
 
-### 通俗比喻
-- **easy（遥控器）**：小，但按一下"开始"，电视就播了
-- **V3 引擎（电视机）**：大，里面才是全部电路
-- **spark.py（老式录像机）**：更大更全，但已被 V2/V3 集成替代
+> 💡 **单文件版把两者合并了**，所以不存在「放在同一目录」的问题。
 
-### 小是优点不是缺点
-- **代码不重复、好维护**：以后引擎升级（如改 burst 算法）只需动引擎，遥控器不用改
-- **分工清晰**：引导逻辑（easy）与业务逻辑（引擎）解耦
-
-> ⚠️ 注意：`ewt_brush_easy_v3.py` 会自动寻找**同目录的 `ewt_brush_v3.py`** 引擎。使用 V2 时则用 `v2/ewt_brush_easy.py`（会自动找同目录的 `v2/ewt_brush_v2.py`）。引擎和傻瓜入口请保持同目录。
 ---
 
 ## 3. 傻瓜式用法（电脑 & 手机）
@@ -101,13 +113,13 @@ EWT360（升学 e网通）是一个网课平台，老师会布置**作业**，�
 
 ### 通用流程（两端一样）
 ```
-运行 ewt_brush_easy_v3.py（V3 推荐，功能最全）→ 输入账号密码 → 自动扫描课时 → 输配置 → 回车开刷
+运行 ewt_brush_optimized.py（单文件版）→ 选登录方式 → 自动扫描 → 选任务范围 → 输配置 → 开刷
 【第 1 步】账号 / 密码        ← 输入你的账号密码（下次自动记住）
 【第 2 步】识别任务           ← 自动扫描，**完整列出所有未完成课时**（不省略，全部显示）
 【第 3 步】刷课配置           ← 实例数 / concurrency / burst / qps（直接回车用推荐值）
 确认开始？                    ← 输入 Y 回车
 ```
-> 💡 **V3 傻瓜入口**会列出全部任务，并在刷课监控阶段显示课时级进度条面板（见 3.3）。
+> 💡 **单文件版**会先显示**作业完成情况总览**（每个作业的进度条），再让你选刷课范围。
 之后全自动：启动 → 实时显示进度 → 全部完成 → 自动验证 → 显示"🎉 全部刷完"。
 
 ---
@@ -166,7 +178,7 @@ pip3 list | grep -E "httpx|pycryptodome"
 > 之后如果脚本升级增加了新依赖，只需更新 `requirements.txt`，用户再跑一次 `pip3 install -r requirements.txt` 即可。
 
 **③ 把脚本文件夹放到电脑上**
-把 `ewt_brush_easy_v3.py` + `ewt_brush_v3.py`（V3 推荐）放到同一个文件夹，例如 `C:\ewt` 或 `~/ewt`。
+把 `ewt_brush_optimized.py` + `ewt_brush_optimized.py`（V3 推荐）放到同一个文件夹，例如 `C:\ewt` 或 `~/ewt`。
 
 **④ 验证安装**
 ```bash
@@ -177,7 +189,7 @@ python3 -c "import httpx, Crypto; print('OK')"
 **⑤ 进入文件夹并运行**
 ```bash
 cd 你的脚本目录          # 例如 Windows: cd C:\ewt   /  Mac/Linux: cd ~/ewt
-python3 ewt_brush_easy_v3.py
+python ewt_brush_optimized.py
 ```
 
 ---
@@ -264,7 +276,7 @@ termux-setup-storage
 
 **⑤ 把脚本放到手机 + 进入目录**
 
-把 `ewt_brush_easy_v3.py` + `ewt_brush_v3.py`（V3 推荐）或 `v2/ewt_brush_easy.py` + `v2/ewt_brush_v2.py`（V2 稳定版）**拷到手机**（如 `Download/ewt360` 文件夹）。
+把 `ewt_brush_optimized.py`（单文件版）**拷到手机**（如 `Download/ewt360` 文件夹）。
 
 然后在 Termux 里 `cd` 到脚本目录：
 ```bash
@@ -278,9 +290,9 @@ ls                                       # 确认能看到两个 .py 文件
 **⑥ 运行刷课（傻瓜入口）**
 
 ```bash
-python ewt_brush_easy_v3.py       # V3 推荐（带进度条面板 + FM/板报直写）
+python ewt_brush_optimized.py       # V3 推荐（带进度条面板 + FM/板报直写）
 # 或正式版：
-python ewt_brush_easy_v3.py
+python ewt_brush_optimized.py
 ```
 按提示答题：**账号 → 密码 → 自动扫描（会完整列出全部课时）→ 实例/concurrency/burst/qps（回车用推荐值）→ Y 确认**，之后全自动。
 
@@ -307,7 +319,7 @@ termux-wake-lock        # 保持 CPU 唤醒（息屏也能继续运行）
 如果课时很多想挂着通宵刷，可用 `nohup` 让脚本在后台跑，即使退出了 Termux 窗口也不停：
 ```bash
 cd /storage/emulated/0/Download/ewt360
-nohup python ewt_brush_easy_v3.py > run.log 2>&1 &
+nohup python ewt_brush_optimized.py > run.log 2>&1 &
 ```
 之后随时查看进度：
 ```bash
@@ -322,7 +334,7 @@ tail -f run.log          # 实时看刷课日志
 ```bash
 termux-wake-lock                              # 1. 保持唤醒
 cd /storage/emulated/0/Download/ewt360        # 2. 进目录
-python ewt_brush_easy_v3.py                  # 3. 开刷（已完成的自动跳过）
+python ewt_brush_optimized.py                  # 3. 开刷（已完成的自动跳过）
 ```
 
 ---
@@ -331,7 +343,7 @@ python ewt_brush_easy_v3.py                  # 3. 开刷（已完成的自动跳
 
 1. 应用商店安装 **Pydroid 3**（免费版即可）
 2. 打开 → 菜单 → **Pip** → 输入 `httpx pycryptodome` → 安装
-3. 把 `ewt_brush_easy_v3.py` 和 `ewt_brush_v3.py` 拷贝到手机**公共存储**（如 `Download/`，**不要放 Pydroid 私有目录**），Pydroid 菜单 → 打开文件 → 选 `ewt_brush_easy_v3.py`
+3. 把 `ewt_brush_optimized.py` 和 `ewt_brush_optimized.py` 拷贝到手机**公共存储**（如 `Download/`，**不要放 Pydroid 私有目录**），Pydroid 菜单 → 打开文件 → 选 `ewt_brush_optimized.py`
 4. 点运行按钮即可（交互式提问照常显示）
 5. 注意：Pydroid 是前台应用，**息屏可能暂停**，建议刷课时保持亮屏并插电
 
@@ -351,9 +363,9 @@ python ewt_brush_easy_v3.py                  # 3. 开刷（已完成的自动跳
 
 刷课过程中随时可以查看进度，三种方式任选：
 
-#### 方式一：傻瓜入口自动显示（ewt_brush_easy_v3.py V3）
+#### 方式一：傻瓜入口自动显示（ewt_brush_optimized.py V3）
 
-**V3 入口（ewt_brush_easy_v3.py）** 刷课期间**实时清屏重绘一个"实时刷课面板"**（默认每 3 秒自动刷新），带**每个课时的独立进度条** + **总进度条**，长这样：
+**V3 入口（ewt_brush_optimized.py）** 刷课期间**实时清屏重绘一个"实时刷课面板"**（默认每 3 秒自动刷新），带**每个课时的独立进度条** + **总进度条**，长这样：
 
 ```
   ═══════ 实时刷课面板 ═══════
@@ -380,7 +392,7 @@ python ewt_brush_easy_v3.py                  # 3. 开刷（已完成的自动跳
 >
 > 顶部会提示：`📌 监控时输入：数字1-30=调刷新间隔(秒) | 回车=立即刷新 | q=退出监控（后台继续刷）`
 
-**【V3 傻瓜入口（ewt_brush_easy_v3.py）】** 实时进度条面板（见上方）。
+**【V3 傻瓜入口（ewt_brush_optimized.py）】** 实时进度条面板（见上方）。
 ```
 ⏱ 03m25s  已完成 47/193  错误 0  WAF 0  运行中 4 实例
 ```
@@ -431,13 +443,13 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 1. **自动验证**：所有实例退出后，工具自动重新扫描，显示"🎉 全部课时已刷完！"即完成
 2. **手动验证**（任何时候都可以）：
    ```bash
-   python3 ewt_brush_v3.py --dry-run --account 你的账号 --password 你的密码
+   python ewt_brush_optimized.py --dry-run --account 你的账号 --password 你的密码
    ```
    看到 `没有未完成的课时（可能已全部刷完）` = 全部完成 ✅
 
 #### 中途中断/关机会丢进度吗？
 
-不会。已刷完的课时服务器已记录，**下次运行扫描会自动跳过已完成**，只刷剩下的，不重不漏。重新运行 `python3 ewt_brush_easy_v3.py` 即可续刷。
+不会。已刷完的课时服务器已记录，**下次运行扫描会自动跳过已完成**，只刷剩下的，不重不漏。重新运行 `python ewt_brush_optimized.py` 即可续刷。
 
 ---
 
@@ -484,8 +496,8 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 
 **测试版引擎**扫描时自动识别 contentType=3/5 的 FM/板报课时，调用 EWT 的 `updateMission {schoolId, contentId, contentType, percent:1}` 接口**一次直写完成度 100%**（不走播放心跳、秒完成），刷课日志显示 `[直写] ... updateMission(ct=3) → ✅ 100%`。
 
-- **V3 正式版**（`ewt_brush_v3.py` / `ewt_brush_easy_v3.py`）：✅ 自动直写 FM/板报
-- **正式版**（`ewt_brush_v2.py` / `ewt_brush_easy.py`）：不处理 FM（只扫 contentType 1/11），FM 请用测试版引擎
+- **V3 正式版**（`ewt_brush_optimized.py` / `ewt_brush_optimized.py`）：✅ 自动直写 FM/板报
+- **V2 稳定版**（`legacy/v2/`）：不处理 FM（只扫 contentType 1/11）
 
 ---
 
@@ -551,7 +563,7 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 **💥 最新实测验证（单实例高路数）**：
 > `并行路数: 18 | QPS: 100000 | 竞态爆发: 48路` → **407 分钟视频（1578min39s）仅用 3 分 21 秒刷完**，123 个课时全部一次通过，无重刷、无卡顿！
 >
-> 配置：`python3 ewt_brush_v3.py --concurrency 18 --burst 48 --qps 100000`（单实例）
+> 配置：`python ewt_brush_optimized.py --concurrency 18 --burst 48 --qps 100000`（单实例）
 
 **结论**：
 - **新手强烈建议用"单实例 不限速 + 高路数"**（如 18路 + burst48 + qps100000），稳定、易操控、无需开多个终端
@@ -624,9 +636,9 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 | `连接被拒绝` | 并发过高 | 降到 12路 或更低 |
 | `没有未完成的课时` | **全部刷完 ✅** | 无需操作，等新作业发布 |
 | 想重刷已完成的课时 | 扫描默认跳过已完成 | 用 `--force-all`，详见第 12 章 |
-| 作业显示还有 FM 课时没完成（心灵成长/生涯规划） | 正式版只刷视频 | 用**V3 引擎**（`ewt_brush_v3.py` 或 `ewt_brush_easy_v3.py`）自动直写 FM/板报 |
+| 作业显示还有 FM 课时没完成（心灵成长/生涯规划） | 正式版只刷视频 | 用**V3 引擎**（`ewt_brush_optimized.py` 或 `ewt_brush_optimized.py`）自动直写 FM/板报 |
 | 刷完显示"未通过" | 看课检测问题 | **无需操作**：机制C 自动重刷最多3次；仍不行本工具自动补刷 |
-| Windows UnicodeEncodeError（中文乱码）| 控制台编码问题 | 脚本已内置 UTF-8 加固，直接运行即可；若仍报错，PowerShell 执行 `$env:PYTHONUTF8="1" ; py ewt_brush_v3.py`，CMD 执行 `set PYTHONUTF8=1 && py ewt_brush_v3.py` |
+| Windows UnicodeEncodeError（中文乱码）| 控制台编码问题 | 脚本已内置 UTF-8 加固，直接运行即可；若仍报错，PowerShell 执行 `$env:PYTHONUTF8="1" ; py ewt_brush_optimized.py`，CMD 执行 `set PYTHONUTF8=1 && py ewt_brush_optimized.py` |
 | 单个课时失败（连接/WAF超限） | 偶发网络/风控 | **无需操作**：本工具自动补刷（最多3轮），已完成的自动跳过 |
 
 ---
@@ -652,33 +664,33 @@ grep -c "\[完成\]" /tmp/ewt_easy_logs/inst_*.log
 
 ```bash
 # 强制重刷全部课时（默认每课时至少2轮）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 --force-all \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 --force-all \
     --concurrency 12 --burst 24 --qps 100000
 
 # 指定作业 + 指定轮数（更彻底：每课时强制3轮）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 --hw 10516876 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 --hw 10516876 \
     --force-all --force-rounds 3 --concurrency 12 --burst 24 --qps 100000
 
 # 先预览会重刷哪些（--force-all --dry-run 会列出含已完成的全部课时）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 --force-all --dry-run
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 --force-all --dry-run
 
 # 多实例分片重刷（每实例都加 --force-all，分片基于"全部课时"列表）
-python3 ewt_brush_v3.py --account X --password Y --force-all \
+python ewt_brush_optimized.py --account X --password Y --force-all \
     --concurrency 12 --burst 24 --qps 100000 --offset 0 --limit 28
-python3 ewt_brush_v3.py --account X --password Y --force-all \
+python ewt_brush_optimized.py --account X --password Y --force-all \
     --concurrency 12 --burst 24 --qps 100000 --offset 28 --limit 28 --phase-offset 5000
 ```
 
 ### 12.3 FM 课时（心灵成长/生涯规划音频）
 
-**V3 引擎 `ewt_brush_v3.py` 已内置 FM/板报直写** —— 通过 `updateMission` 接口一次直写 100%，无需额外 FM 脚本：
+**V3 引擎 `ewt_brush_optimized.py` 已内置 FM/板报直写** —— 通过 `updateMission` 接口一次直写 100%，无需额外 FM 脚本：
 
 ```bash
 # 只刷未完成的 FM（自动跳过已完成）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码
 
 # 强制重刷全部 FM（含已完成）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 --force-all
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 --force-all
 ```
 
 **工作原理**：测试版引擎扫描时会自动识别 FM(contentType=3)/板报(contentType=5) 课时，调用 EWT 的 `updateMission {schoolId, contentId, contentType, percent:1}` 接口**一次直写完成度 100%**，不走播放心跳、秒完成。
@@ -699,29 +711,29 @@ python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 --force-a
 
 ```bash
 # 预检扫描
-python3 ewt_brush_v3.py --dry-run --account 你的账号 --password 你的密码
+python ewt_brush_optimized.py --dry-run --account 你的账号 --password 你的密码
 
 # 单实例极速
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000
 
 # 多实例（4个）手动分片（终端1~4各跑一条）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 0 --limit 25
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 25 --limit 25 --phase-offset 5000
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 50 --limit 25 --phase-offset 10000
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000 --offset 75 --limit 0 --phase-offset 15000
 
 # FM 课时（心灵成长/生涯规划音频）——用测试版引擎自动直写（含 FM/板报）
-python3 ewt_brush_v3.py --account 你的账号 --password 你的密码 \
+python ewt_brush_optimized.py --account 你的账号 --password 你的密码 \
     --concurrency 12 --burst 24 --qps 100000
 # 或傻瓜入口：
-python3 ewt_brush_easy_v3.py
+python ewt_brush_optimized.py
 
 # 查看全部参数
-python3 ewt_brush_v3.py --help
-# 查看 V3 参数：python3 ewt_brush_v3.py --help
+python ewt_brush_optimized.py --help
+# 查看 V3 参数：python ewt_brush_optimized.py --help
 ```
