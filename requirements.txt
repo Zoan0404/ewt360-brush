@@ -1,2 +1,6 @@
+# EWT360 刷课工具依赖清单
+# 安装：pip install -r requirements.txt
 httpx>=0.24.0
 pycryptodome>=3.19.0
+# 可选：终端二维码渲染（扫码登录用，不装则显示链接）
+# qrcode>=7.4.2
