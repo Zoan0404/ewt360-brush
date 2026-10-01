@@ -162,7 +162,7 @@ UA = (
 SPEED = 2                # 硬上限！speed=2.1 即触发 699001（实测验证）
 BURST_SIZE = 12          # 单课时竞态爆发并发路数（--burst 可调）
 BURST_WAIT = 10          # 爆发间隔（秒）— bucket refill 约需 ~12s
-FAST_MODE = True         # [v3-test] 快速复核循环：小间隔高频爆发+每波查进度提前停
+FAST_MODE = False        # [用户可选] 快速复核循环（默认关闭=传统方式）：小间隔高频爆发+每波查进度提前停
 FAST_INTERVAL = 0.2      # [v3-test] 快速模式波间隔（秒），实测 48发/波 + 0.2s ≈ 9~32倍速
 FAST_MAX_ROUNDS = 400    # [v3-test] 快速模式单课时最大波数（防死循环兜底）
 MAX_LOGIN_RETRY = 3      # token 自动续期上限
@@ -826,15 +826,41 @@ class EwtClient:
                         break
                     page_index += 1
                 return subj_tasks
+            # [修复] 并发拉取 + 失败重试2次（原先静默丢弃失败科目 → 会漏课时）
+            subjects = list(range(1, 17))
             results = await asyncio.gather(
-                *(_fetch_subj(s) for s in range(1, 17)),
+                *(_fetch_subj(s) for s in subjects),
                 return_exceptions=True,
             )
+            failed = [subjects[i] for i, r in enumerate(results)
+                      if isinstance(r, BaseException)]
+            for _retry in range(2):
+                if not failed:
+                    break
+                retry_res = await asyncio.gather(
+                    *(_fetch_subj(s) for s in failed),
+                    return_exceptions=True,
+                )
+                for i, r in enumerate(retry_res):
+                    if not isinstance(r, BaseException):
+                        idx = subjects.index(failed[i])
+                        results[idx] = r
+                failed = [failed[i] for i, r in enumerate(retry_res)
+                          if isinstance(r, BaseException)]
+            if failed:
+                print(f"  WARNING: 科目 {failed} 拉取失败（已重试2次）")
             all_tasks: list[dict] = []
+            seen_ids: set = set()
             for r in results:
                 if isinstance(r, BaseException):
                     continue
-                all_tasks.extend(r)
+                for t in r:
+                    lid = t.get("contentId")
+                    if lid and lid in seen_ids:
+                        continue
+                    if lid:
+                        seen_ids.add(lid)
+                    all_tasks.append(t)
             return all_tasks
         # 按日期/科目过滤模式（queryMustLearn=1 和 =2 都查）
         all_tasks = []
@@ -936,18 +962,31 @@ class EwtClient:
             return [i for i in (_build(t, None) for t in subj_tasks) if i]
 
         if date_stat:
-            results = await asyncio.gather(*(_fetch_day(ds) for ds in date_stat),
-                                           return_exceptions=True)
-            groups: list = date_stat
+            groups: list = list(date_stat)
+            _fetch = _fetch_day
         else:
-            results = await asyncio.gather(*(_fetch_subject(s) for s in must_learn_subjects),
-                                           return_exceptions=True)
-            groups = must_learn_subjects
+            groups = list(must_learn_subjects)
+            _fetch = _fetch_subject
+        results = await asyncio.gather(*(_fetch(g) for g in groups),
+                                       return_exceptions=True)
+        # [修复] 失败组自动重试2次（SSL/WAF偶发失败，原先直接丢弃会漏课时）
+        for _retry in range(2):
+            bad = [i for i, r in enumerate(results) if isinstance(r, BaseException)]
+            if not bad:
+                break
+            logger.warning("list_video_tasks 重试%d: hw=%s 失败组=%d",
+                           _retry + 1, homework_id, len(bad))
+            await asyncio.sleep(1.5 * (_retry + 1))
+            rr = await asyncio.gather(*(_fetch(groups[i]) for i in bad),
+                                      return_exceptions=True)
+            for j, r in enumerate(rr):
+                if not isinstance(r, BaseException):
+                    results[bad[j]] = r
         seen: set = set()
         out: list[dict] = []
         for group, items in zip(groups, results):
             if isinstance(items, BaseException):
-                logger.warning("list_video_tasks 单组拉取失败: hw=%s group=%s err=%s",
+                logger.warning("list_video_tasks 单组失败(已重试2次): hw=%s group=%s err=%s",
                                homework_id, group, items)
                 continue
             for item in items:
@@ -2043,10 +2082,13 @@ async def run_brush_all(
     phase_offset_ms: int = 0,
     burst_size: int = BURST_SIZE,
     force_all: bool = False,
+    use_fast: bool | None = None,
 ) -> int:
     """主流程：扫描 → 分片 → N路并行刷课 → token 自动续期。返回退出码。
     force_all=True：扫描含已完成课时并强制重刷（force_rounds<=0 时默认每课时跑2轮）。"""
-    global BURST_SIZE
+    global BURST_SIZE, FAST_MODE
+    if use_fast is not None:
+        FAST_MODE = bool(use_fast)
     if burst_size and burst_size > 0:
         BURST_SIZE = int(burst_size)  # CLI 参数同步全局（热更新 watcher 以此为基准）
     concurrency = max(1, int(concurrency))
@@ -2391,6 +2433,244 @@ async def ui_login(account: str, password: str) -> str:
         raise
 
 
+def _cw(text: str) -> int:
+    """按显示宽度计算（中文=2）。"""
+    w = 0
+    for ch in str(text):
+        w += 2 if ord(ch) > 0x2E80 else 1
+    return w
+
+
+def _pad(text: str, width: int) -> str:
+    """中英文混排补空格对齐。"""
+    t = str(text)
+    return t + " " * max(0, width - _cw(t))
+
+
+def _cut(text: str, width: int) -> str:
+    """按显示宽度截断（中文算2宽），超出部分用省略号。"""
+    t = str(text)
+    if _cw(t) <= width:
+        return t
+    out = ""
+    w = 0
+    for ch in t:
+        cw = 2 if ord(ch) > 0x2E80 else 1
+        if w + cw > width - 1:
+            break
+        out += ch
+        w += cw
+    return out + "."
+
+
+def _task_done(t: dict) -> bool:
+    """课时是否已完成（finished=True 或 percent>=0.8）。"""
+    if t.get("finished") is True:
+        return True
+    try:
+        return float(t.get("percent") or 0) >= 0.8
+    except (TypeError, ValueError):
+        return False
+
+
+async def ui_scan_overview(token: str):
+    """扫描全部作业并显示完成情况总览（所有作业都列出）。
+    返回 (all_tasks, pending, client, school_id)
+    """
+    pr(color("  ⏳ 正在扫描全部作业，请稍候（约 5~60 秒）…", C.BLUE))
+    client = EwtClient(token)
+    school_info = await client.fetch_school_info()
+    school_id = int(school_info["schoolId"])
+
+    # 1) 先拿全部作业清单——保证「没有视频课时的作业」也能列出
+    try:
+        all_hws = await client.list_homeworks(school_id)
+    except Exception:
+        all_hws = []
+
+    # 2) 扫描全部视频类课时
+    all_tasks = await scan_pending_tasks(client, school_id, include_finished=True)
+    pending = [(h, t) for (h, t) in all_tasks if not _task_done(t)]
+
+    # 3) 用作业清单打底，再填课时统计
+    stat = {}
+    for hw in all_hws:
+        hid = hw.get("homeworkId")
+        stat[hid] = {
+            "title": str(hw.get("title", "")) or ("作业 " + str(hid)),
+            "total": 0, "done": 0,
+        }
+    for hid, t in all_tasks:
+        d = stat.setdefault(hid, {
+            "title": str(t.get("homeworkTitle", "")) or ("作业 " + str(hid)),
+            "total": 0, "done": 0,
+        })
+        d["total"] += 1
+        if _task_done(t):
+            d["done"] += 1
+
+    if not stat:
+        return [], [], client, school_id
+
+    # 4) 渲染总览
+    pr()
+    title("作业完成情况总览", "*")
+    pr(color("  序号  作业名称                          完成度          状态", C.B))
+    divider()
+    for idx, (hid, d) in enumerate(stat.items(), 1):
+        total, done = d["total"], d["done"]
+        name = _pad(d["title"][:26], 30)
+        if total == 0:
+            pr("  %3d   %s %s  %s" % (
+                idx, name, " " * 12, color("无视频课时", C.DIM)))
+            continue
+        left = total - done
+        pct = done / total
+        bar = progress_bar(pct, 12)
+        if left == 0:
+            status = color("已完成", C.GREEN)
+        else:
+            status = color("剩 %d 个" % left, C.YELLOW)
+        pr("  %3d   %s %s %3d/%-3d  %s" % (idx, name, bar, done, total, status))
+    divider()
+    total_all = len(all_tasks)
+    total_done = total_all - len(pending)
+    skip = sum(1 for d in stat.values() if d["total"] == 0)
+    pr("  合计：%s 个课时  |  已完成 %s  |  未完成 %s" % (
+        color(str(total_all), C.B), color(str(total_done), C.GREEN),
+        color(str(len(pending)), C.B + C.YELLOW)))
+    if skip:
+        pr(color("  另有 %d 个作业无视频课时（仅试卷/测评类，不在本工具范围）" % skip, C.DIM))
+    sec = sum(int(t.get("duration") or 0) for _, t in pending)
+    if sec:
+        pr("  待刷视频总时长：%s" % color(human_time(sec), C.CYAN))
+    return all_tasks, pending, client, school_id
+
+
+def _print_task_list(lst: list, label: str, page_size: int = 0):
+    """直接列出全部任务：序号 / 状态 / 科目 / 标题 / 归属作业 / 时长。"""
+    total = len(lst)
+    if total == 0:
+        warn("没有%s" % label)
+        ask("按回车返回", "")
+        return
+    os.system("cls" if os.name == "nt" else "clear")
+    pr()
+    title("%s（共 %d 个）" % (label, total), "*")
+    pr(color("  序号  状态    科目       标题                              归属作业            时长", C.B))
+    divider()
+    for i, item in enumerate(lst, 1):
+        t = item[1] if isinstance(item, tuple) else item
+        hid = item[0] if isinstance(item, tuple) else t.get("homeworkId", "")
+        df = _task_done(t)
+        st = "已完成" if df else "未完成"
+        st_col = color(st, C.GREEN if df else C.YELLOW)
+        st_pad = " " * max(0, 8 - _cw(st))
+        subj = _pad(_cut(t.get("subjectName", ""), 8), 10)
+        name = _pad(_cut(t.get("title", ""), 30), 34)
+        hw = _pad(_cut(t.get("homeworkTitle", "") or ("作业" + str(hid)), 16), 18)
+        dur = human_time(int(t.get("duration") or 0))
+        pr("  %4d  %s%s%s%s%s%s" % (i, st_col, st_pad, subj, name, hw, dur))
+    divider()
+    ok("以上为全部 %d 个任务" % total)
+    ask("按回车返回", "")
+
+
+def ui_show_tasks(all_tasks: list):
+    """查看具体任务：全部 / 未完成 / 已完成 / 按作业。"""
+    while True:
+        pending = [(h, t) for (h, t) in all_tasks if not _task_done(t)]
+        done = [(h, t) for (h, t) in all_tasks if _task_done(t)]
+        pr()
+        title("查看任务详情", "*")
+        pr(color("  [ 1 ]", C.B + C.GREEN) + "  全部任务     "
+           + color("共 %d 个" % len(all_tasks), C.DIM))
+        pr(color("  [ 2 ]", C.B + C.GREEN) + "  未完成任务   "
+           + color("共 %d 个" % len(pending), C.B + C.YELLOW))
+        pr(color("  [ 3 ]", C.B + C.GREEN) + "  已完成任务   "
+           + color("共 %d 个" % len(done), C.GREEN))
+        pr(color("  [ 4 ]", C.B + C.GREEN) + "  按作业查看   "
+           + color("先选作业再看课时", C.DIM))
+        pr(color("  [ 0 ]", C.B + C.RED) + "  返回")
+        pr()
+        c = ask("请选择（0-4）", "2").strip() or "2"
+        if c == "0":
+            return
+        if c == "1":
+            _print_task_list(all_tasks, "全部任务")
+        elif c == "2":
+            _print_task_list(pending, "未完成任务")
+        elif c == "3":
+            _print_task_list(done, "已完成任务")
+        elif c == "4":
+            by_hw = {}
+            for hid, t in all_tasks:
+                by_hw.setdefault(hid, []).append((hid, t))
+            keys = list(by_hw.keys())
+            pr()
+            for i, hid in enumerate(keys, 1):
+                tl = by_hw[hid]
+                left = sum(1 for _h, _t in tl if not _task_done(_t))
+                ttl = str(tl[0][1].get("homeworkTitle", ""))[:30]
+                pr("  %3d  %s  未完成 %d / %d" % (i, _pad(ttl, 32), left, len(tl)))
+            pr()
+            sel = ask_int("请输入作业序号（0=返回）", 0, lo=0, hi=len(keys))
+            if sel == 0:
+                continue
+            sub = by_hw[keys[sel - 1]]
+            _print_task_list(sub, str(sub[0][1].get("homeworkTitle", ""))[:18])
+
+
+def ui_choose_tasks(all_tasks: list, pending: list):
+    """选择刷课范围，返回 (选中任务列表, hw_filter)。
+    hw_filter 为 None 表示全部作业，否则限定单个作业。"""
+    pr()
+    title("选择刷课范围", "*")
+    pr(color("  [ 1 ]", C.B + C.GREEN) + "  刷全部未完成   "
+       + color("共 %d 个课时，推荐" % len(pending), C.DIM))
+    pr(color("  [ 2 ]", C.B + C.GREEN) + "  只刷指定作业   "
+       + color("按序号挑一个", C.DIM))
+    pr(color("  [ 3 ]", C.B + C.GREEN) + "  强制重刷全部   "
+       + color("共 %d 个课时，含已完成" % len(all_tasks), C.YELLOW))
+    pr(color("  [ 4 ]", C.B + C.GREEN) + "  查看任务详情   "
+       + color("列出全部/未完成/已完成", C.DIM))
+    pr(color("  [ 0 ]", C.B + C.RED) + "  返回主菜单")
+    pr()
+    choice = ask("请选择（0-4）", "1").strip() or "1"
+
+    if choice == "4":
+        ui_show_tasks(all_tasks)
+        return None, None
+
+    if choice == "0":
+        return [], None
+    if choice == "2":
+        by_hw = {}
+        for hid, t in all_tasks:
+            by_hw.setdefault(hid, []).append((hid, t))
+        keys = list(by_hw.keys())
+        pr()
+        for i, hid in enumerate(keys, 1):
+            tl = by_hw[hid]
+            left = sum(1 for _h,_t in tl if not _task_done(_t))
+            ttl = str(tl[0][1].get("homeworkTitle", ""))[:30]
+            pr("  %3d  %s  未完成 %d / %d" % (i, _pad(ttl, 32), left, len(tl)))
+        pr()
+        sel = ask_int("请输入作业序号", 1, lo=1, hi=len(keys))
+        hid = keys[sel - 1]
+        picked = [(h, t) for (h, t) in pending if h == hid]
+        if not picked:
+            warn("该作业没有未完成课时，改为强制重刷该作业")
+            picked = [(h, t) for (h, t) in all_tasks if h == hid]
+        return picked, hid
+    if choice == "3":
+        return list(all_tasks), None
+    if not pending:
+        warn("没有未完成的课时")
+        return [], None
+    return list(pending), None
+
+
 async def ui_scan(token: str, account: str, password: str,
                   hw_filter: str = "", force_all: bool = False) -> list:
     """扫描课时，返回任务列表 [(hw_id, task), ...]。"""
@@ -2447,6 +2727,20 @@ def ui_choose_config(cfg: dict, task_count: int) -> dict:
         cfg.get("burst", 48),
         "推荐 48（越高越快，但过高可能被拦截）",
         lo=1)
+    # ---- 刷课模式：快速复核 / 传统间隔 ----
+    pr()
+    pr(color("  ── 刷课模式 ──", C.B + C.MAGENTA))
+    pr(color("    [ 1 ]", C.B + C.GREEN) + "  传统模式    "
+       + color("每10秒一波，平稳保守（默认）", C.DIM))
+    pr(color("    [ 2 ]", C.B + C.YELLOW) + "  快速复核    "
+       + color("间隔0.2秒高频，实测快约2倍", C.DIM))
+    pr(color("        说明：快速模式发请求更密集，理论上风控风险略高；", C.DIM))
+    pr(color("              实测 48 爆发 + 不限速下未触发风控。可随时改回。", C.DIM))
+    _fm = str(cfg.get("use_fast", "1"))
+    _fm = _fm if _fm in ("1", "2") else "1"
+    mode = ask("请选择刷课模式（1-2）", _fm).strip() or _fm
+    use_fast = (mode == "2")
+
     qps = ask(
         "限速 QPS",
         cfg.get("qps", "100000"),
@@ -2470,6 +2764,7 @@ def ui_choose_config(cfg: dict, task_count: int) -> dict:
     return {
         "n_inst": n_inst, "concurrency": concurrency,
         "burst": burst, "qps": qps_val, "force_rounds": force_rounds,
+        "use_fast": use_fast,
     }
 
 
@@ -2486,6 +2781,9 @@ def ui_confirm(account: str, cfg: dict, task_count: int, force_all: bool) -> boo
     pr(f"   并发路数  : {color(str(cfg['concurrency']), C.CYAN)}")
     pr(f"   爆发路数  : {color(str(cfg['burst']), C.CYAN)}")
     pr(f"   限速 QPS  : {color(str(cfg['qps']), C.CYAN)}")
+    _m = cfg.get("use_fast")
+    pr("   刷课模式  : " + (color("快速复核（间隔0.2秒）", C.YELLOW) if _m
+       else color("传统间隔（每10秒）", C.GREEN)))
     divider()
     return ask_yes("确认开始？", True)
 
@@ -2651,48 +2949,37 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
     password = cfg.get("password", "")
     save_cfg(cfg)
 
-    # 第 2 步：扫描任务
-    step(2, 4, "识别任务")
+    # 第 2 步：扫描任务（总览 + 选择范围）
+    step(2, 4, "扫描作业")
     try:
-        tasks = await ui_scan(token, account, password)
+        all_tasks, pending, client, school_id = await ui_scan_overview(token)
     except Exception as e:
-        err(f"扫描失败：{str(e)[:100]}")
+        err("扫描失败：%s" % str(e)[:100])
         warn("可能是 token 失效，请重新运行脚本登录")
         return 1
 
-    force_all = bool(force_all_forced)
-    if force_all and tasks:
-        pr()
-        info(f"已进入【强制重刷】模式，共 {len(tasks)} 个课时（含已完成）")
-    if not tasks:
-        pr()
-        warn("没有发现未完成的课时——这个账号已经全部刷完了！")
-        pr()
-        if ask_yes("是否强制重刷全部课时（用于修复看课检测未通过的情况）？", False):
-            force_all = True
-            pr()
-            info("已切换为【强制重刷】模式，重新扫描中…")
-            try:
-                tasks = await ui_scan(token, account, password, force_all=True)
-            except Exception as e:
-                err(f"扫描失败：{str(e)[:100]}")
-                return 1
-            if not tasks:
-                warn("仍未找到任何课时")
-                return 1
-        else:
-            ok("无需操作，程序退出")
-            return 0
-
-    # 【只扫描】模式：列完课时就结束
-    if action == "scan":
-        pr()
-        divider()
-        ok("以上即为当前所有未完成课时")
-        pr()
-        info("想开始刷课，请回主菜单选择「1 开始刷课」")
+    if not all_tasks:
+        warn("没有扫描到任何课时")
         ask("按回车返回主菜单", "")
         return 0
+
+    # 让用户选择刷课范围
+    while True:
+        selected, hw_filter = ui_choose_tasks(all_tasks, pending)
+        if selected is None:
+            continue
+        if not selected:
+            pr()
+            info("已取消")
+            return 0
+        break
+
+    force_all = False
+    # 判断是否含已完成课时（判断模式）
+    if any(_task_done(t) for _, t in selected):
+        force_all = True
+
+    tasks = selected
 
     # 第 3 步：配置
     step(3, 4, "刷课设置")
@@ -2701,7 +2988,8 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
     save_cfg({"account": account, "password": password,
               "n_inst": run_cfg["n_inst"], "concurrency": run_cfg["concurrency"],
               "burst": run_cfg["burst"], "qps": str(int(run_cfg["qps"])),
-              "force_rounds": run_cfg["force_rounds"]})
+              "force_rounds": run_cfg["force_rounds"],
+              "use_fast": "2" if run_cfg.get("use_fast") else "1"})
 
     if not ui_confirm(account, run_cfg, len(tasks), force_all):
         pr()
@@ -2715,10 +3003,11 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
         """用引擎跑一轮（run_brush_all 内部自带登录/扫描/刷课/续期）。"""
         await run_brush_all(
             tk, account, password,
-            hw_filter=None, concurrency=run_cfg["concurrency"],
+            hw_filter=hw_filter, concurrency=run_cfg["concurrency"],
             qps=run_cfg["qps"], offset=0, limit=0, dry_run=False, speed=None,
             force_rounds=run_cfg.get("force_rounds", 0),
-            phase_offset_ms=0, burst_size=run_cfg["burst"], force_all=force_all)
+            phase_offset_ms=0, burst_size=run_cfg["burst"], force_all=force_all,
+            use_fast=run_cfg.get("use_fast"))
         return tk
 
     title("开始刷课", "🚀")
@@ -2760,6 +3049,66 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
     pr()
     pr(color("  感谢使用！有问题欢迎反馈 💬", C.DIM))
     return rc
+
+
+def _build_parser():
+    """精简 CLI 解析器（兼容高级用户直接用参数运行）。"""
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="ewt_brush_optimized.py",
+        description="EWT360 智能刷课助手（单文件版）",
+        epilog="不带参数运行会进入图形化菜单，更适合日常使用。")
+    p.add_argument("--account", help="账号")
+    p.add_argument("--password", help="密码")
+    p.add_argument("--token", help="已有 token（跳过登录）")
+    p.add_argument("--hw", help="只刷指定作业 ID")
+    p.add_argument("--concurrency", type=int, default=18, help="并发路数（默认18）")
+    p.add_argument("--burst", type=int, default=48, help="爆发路数（默认48）")
+    p.add_argument("--qps", type=float, default=100000.0, help="限速QPS（默认100000=不限速）")
+    p.add_argument("--offset", type=int, default=0, help="起始分片（多实例用）")
+    p.add_argument("--limit", type=int, default=0, help="分片数量（多实例用）")
+    p.add_argument("--phase-offset", type=int, default=0, help="首轮错峰毫秒")
+    p.add_argument("--force-rounds", type=int, default=0, help="强制重刷轮数")
+    p.add_argument("--force-all", action="store_true", help="强制重刷全部（含已完成）")
+    p.add_argument("--dry-run", action="store_true", help="仅扫描不刷课")
+    p.add_argument("--fast", dest="fast", action="store_true", default=None,
+                   help="启用快速复核循环（更快，请求更密集）")
+    p.add_argument("--no-fast", dest="fast", action="store_false",
+                   help="使用传统10秒间隔方式（更保守）")
+    return p
+
+
+async def _run(args) -> int:
+    """CLI 模式：直接调用引擎执行。"""
+    token = (args.token or "").strip()
+    account = (args.account or "").strip()
+    password = (args.password or "").strip()
+    if not token:
+        token = load_token_file() or ""
+    if not re.match(r"^\d+-(1|2)-[0-9a-fA-F]+$", token or ""):
+        if not account or not password:
+            print("需要 --account/--password 或 --token")
+            return 1
+        print("正在登录…")
+        token = await login(account, password)
+        print("登录成功:", token[:16] + "…")
+    if args.dry_run:
+        args.force_all = True   # dry-run 需要扫全量
+    return await run_brush_all(
+        token, account, password,
+        hw_filter=args.hw,
+        concurrency=args.concurrency,
+        qps=args.qps,
+        offset=args.offset,
+        limit=args.limit,
+        dry_run=args.dry_run,
+        speed=None,
+        force_rounds=args.force_rounds,
+        phase_offset_ms=args.phase_offset,
+        burst_size=args.burst,
+        force_all=args.force_all,
+        use_fast=args.fast,
+    )
 
 
 def main() -> int:
