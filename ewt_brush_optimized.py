@@ -162,7 +162,8 @@ UA = (
 SPEED = 2                # 硬上限！speed=2.1 即触发 699001（实测验证）
 BURST_SIZE = 12          # 单课时竞态爆发并发路数（--burst 可调）
 BURST_WAIT = 10          # 爆发间隔（秒）— bucket refill 约需 ~12s
-FAST_MODE = False        # [用户可选] 快速复核循环（默认关闭=传统方式）：小间隔高频爆发+每波查进度提前停
+STAY_MS = 10000          # 单轮推进（毫秒）— 每次上报声称的播放时长（可调，越大越快）
+FAST_MODE = True         # [默认] 快速复核循环：0.2s 高频爆发+每波查进度提前停（实测 9~32 倍速）
 FAST_INTERVAL = 0.2      # [v3-test] 快速模式波间隔（秒），实测 48发/波 + 0.2s ≈ 9~32倍速
 
 # ---- [进度面板] 全局渲染钩子：run_brush_all 会安装 ProgressDashboard ----
@@ -1351,7 +1352,7 @@ async def _fire_play(conf, token, lesson_id, course_id, school_id, biz_code,
     if use_burst:
         return await _concurrent_burst(
             conf, token, lesson_id, course_id, school_id,
-            biz_code, video_type, n_threads, 10000, speed,
+            biz_code, video_type, n_threads, stay_time_ms, speed,
         )
     try:
         await _report_point(
@@ -1582,9 +1583,10 @@ async def run_brush_task(
                 except Exception:
                     pass  # 沿用旧 conf
             # 播放上报
+            _stay = STAY_MS if use_burst else int(wait_sec * 1000)
             burst_ok, burst_total, burst_waf = await _fire_play(
                 conf, token, lesson_id, report_cid, school_id,
-                biz_code, video_type, int(wait_sec * 1000), speed, use_burst,
+                biz_code, video_type, _stay, speed, use_burst,
                 n_threads=n_threads,
             )
             total_reqs += burst_total
@@ -1653,7 +1655,7 @@ async def run_brush_task(
                             await asyncio.sleep(2)
                             burst_ok2, burst_total2, _ = await _fire_play(
                                 conf, token, lesson_id, report_cid, school_id,
-                                biz_code, video_type, 10000, speed, use_burst,
+                                biz_code, video_type, STAY_MS, speed, use_burst,
                                 n_threads=n_threads,
                             )
                             total_reqs += burst_total2
@@ -1685,7 +1687,7 @@ async def run_brush_task(
                             await asyncio.sleep(2)
                             burst_ok2, burst_total2, _ = await _fire_play(
                                 conf, token, lesson_id, report_cid, school_id,
-                                biz_code, video_type, 10000, speed, use_burst,
+                                biz_code, video_type, STAY_MS, speed, use_burst,
                                 n_threads=n_threads,
                             )
                             total_reqs += burst_total2
@@ -2119,12 +2121,24 @@ async def run_brush_all(
     burst_size: int = BURST_SIZE,
     force_all: bool = False,
     use_fast: bool | None = None,
+    interval: float | None = None,
+    stay_ms: int | None = None,
 ) -> int:
     """主流程：扫描 → 分片 → N路并行刷课 → token 自动续期。返回退出码。
     force_all=True：扫描含已完成课时并强制重刷（force_rounds<=0 时默认每课时跑2轮）。"""
-    global BURST_SIZE, FAST_MODE
+    global BURST_SIZE, FAST_MODE, FAST_INTERVAL, BURST_WAIT, STAY_MS
     if use_fast is not None:
         FAST_MODE = bool(use_fast)
+    # 可调参数：波间隔（秒）/ 单轮推进（毫秒）
+    if interval is not None and interval > 0:
+        if use_fast is None:
+            FAST_MODE = (float(interval) < 1.0)   # 未显式指定时按波间隔自动判定
+        if FAST_MODE:
+            FAST_INTERVAL = float(interval)
+        else:
+            BURST_WAIT = float(interval)
+    if stay_ms is not None and stay_ms > 0:
+        STAY_MS = int(stay_ms)
     if burst_size and burst_size > 0:
         BURST_SIZE = int(burst_size)  # CLI 参数同步全局（热更新 watcher 以此为基准）
     concurrency = max(1, int(concurrency))
@@ -2194,8 +2208,14 @@ async def run_brush_all(
             return 0
 
         # ---- N路并行刷课（分批 gather，每批 concurrency 个）----
+        if speed:
+            _mode_desc = "倍速 " + str(speed) + "x"
+        else:
+            _iv = FAST_INTERVAL if FAST_MODE else BURST_WAIT
+            _mode_desc = "竞态爆发 %.2gs/波%s" % (
+                _iv, " · 达标即停" if FAST_MODE else "")
         print(f"\n并行路数: {concurrency} | QPS: {qps or '不限'} | "
-              f"竞态爆发: {burst_size}路 | 模式: {'倍速' + str(speed) + 'x' if speed else '竞态爆发'}")
+              f"竞态爆发: {burst_size}路 | 模式: {_mode_desc} | 单轮 {STAY_MS/1000:.0f}s")
         ok_count = 0
         failed: list[dict] = []
         pending = list(tasks)
@@ -2482,6 +2502,8 @@ def bar_prefix(key) -> str:
     return "[%s] " % (k[-6:] if len(k) > 6 else k)
 
 
+DASH_MIN_INTERVAL = 0.1   # 面板最快刷新间隔（秒）=10Hz，防止高频重绘拖慢事件循环
+
 class ProgressDashboard:
     """刷课实时面板：总体进度 + 每个并发课时的进度条，原地刷新不刷屏。
     非交互终端（重定向/管道）自动降级为普通滚动输出。"""
@@ -2500,6 +2522,9 @@ class ProgressDashboard:
         self.ok = 0
         self.fail = 0
         self.tasks = {}     # key -> [title, pct, detail]
+        self._last_render = 0.0   # 上次渲染时刻（节流用）
+        self._last_width_t = 0.0  # 上次读终端宽度时刻（缓存用）
+        self._dirty = False       # 有未渲染的更新
 
     # ---------------- 内部 ----------------
     def _fit(self, s: str) -> str:
@@ -2541,33 +2566,53 @@ class ProgressDashboard:
         sys.stdout.flush()
         self.lines = 0
 
-    def _render(self) -> None:
-        if not self.enabled:
-            return
-        self._clear()
-        self.width = _term_width()   # 每次重算，应对窗口缩放
-        _cr = chr(13)
-        _esc = chr(27)
+    def _build(self) -> list:
+        """构造面板各行内容（截断前）。"""
         pct = self.done / self.total
-        head = ("总体 %s %d/%d (%d%%)　成功 %d 失败 %d"
+        head = ("总体 %s %d/%d (%d%%) 成功 %d 失败 %d"
                 % (progress_bar(pct, 24), self.done, self.total,
                    int(pct * 100), self.ok, self.fail))
-        buf = [self._fit(color("  " + head, C.B + C.CYAN))]
+        out = [self._fit(color("  " + head, C.B + C.CYAN))]
         for key, t in self.tasks.items():
             p, detail = t[1], t[2]
-            buf.append(self._fit("   " + bar_prefix(key)
+            out.append(self._fit("   " + bar_prefix(key)
                                  + progress_bar(p, 16)
                                  + " %3d%%  %s" % (int(p * 100), detail)))
-        for line in buf:
-            sys.stdout.write(_cr + _esc + "[K" + line + chr(10))
+        return out
+
+    def _render(self, force: bool = False) -> None:
+        """重绘面板。默认节流（最快 DASH_MIN_INTERVAL 一次）。
+        节流 + 宽度缓存 + 单次 write，避免高频刷新抢事件循环。"""
+        if not self.enabled:
+            return
+        now = time.monotonic()
+        if not force and (now - self._last_render) < DASH_MIN_INTERVAL:
+            self._dirty = True
+            return
+        self._last_render = now
+        self._dirty = False
+        if now - self._last_width_t > 1.0:   # 宽度最多每秒读一次（系统调用）
+            self.width = _term_width()
+            self._last_width_t = now
+        _cr = chr(13)
+        _esc = chr(27)
+        lines = self._build()
+        buf = []
+        for _ in range(self.lines):          # 上移并清掉旧内容
+            buf.append(_esc + "[1A" + _cr + _esc + "[K")
+        if self.lines:
+            buf.append(_cr)
+        for line in lines:                    # 写新内容
+            buf.append(_cr + _esc + "[K" + line + chr(10))
+        sys.stdout.write("".join(buf))        # 单次 write + flush
         sys.stdout.flush()
-        self.lines = len(buf)
+        self.lines = len(lines)
 
     # ---------------- 对外 ----------------
     def start(self, key, title: str = "") -> None:
         key = str(key)
         self.tasks[key] = [title, 0.0, "开始…"]
-        self._render()
+        self._render(force=True)
         if not self.enabled:
             print("  ▶ " + str(title or key), flush=True)
 
@@ -2592,7 +2637,7 @@ class ProgressDashboard:
             self.ok += 1
         else:
             self.fail += 1
-        self._render()
+        self._render(force=True)
         if not self.enabled:
             pct = self.done / self.total
             print("  ✓ 完成 " + key + ("" if ok else "（失败）")
@@ -2605,7 +2650,7 @@ class ProgressDashboard:
             return
         self._clear()
         print(msg, flush=True)
-        self._render()
+        self._render(force=True)
 
     def close(self) -> None:
         self._clear()
@@ -2865,7 +2910,11 @@ def ui_choose_tasks(all_tasks: list, pending: list):
         by_hw = {}
         for hid, t in all_tasks:
             by_hw.setdefault(hid, []).append((hid, t))
-        keys = list(by_hw.keys())
+        # 只列「还有未完成课时」的作业（本菜单语义=挑一个来刷）
+        keys = [k for k in by_hw if any(not _task_done(_t) for _h, _t in by_hw[k])]
+        if not keys:
+            warn("所有作业的视频课时都已完成，如需重刷请返回并选 [3] 强制重刷")
+            return [], None
         pr()
         for i, hid in enumerate(keys, 1):
             tl = by_hw[hid]
@@ -2944,20 +2993,6 @@ def ui_choose_config(cfg: dict, task_count: int) -> dict:
         cfg.get("burst", 48),
         "推荐 48（越高越快，但过高可能被拦截）",
         lo=1)
-    # ---- 刷课模式：快速复核 / 传统间隔 ----
-    pr()
-    pr(color("  ── 刷课模式 ──", C.B + C.MAGENTA))
-    pr(color("    [ 1 ]", C.B + C.GREEN) + "  传统模式    "
-       + color("每10秒一波，平稳保守（默认）", C.DIM))
-    pr(color("    [ 2 ]", C.B + C.YELLOW) + "  快速复核    "
-       + color("间隔0.2秒高频，实测快约2倍", C.DIM))
-    pr(color("        说明：快速模式发请求更密集，理论上风控风险略高；", C.DIM))
-    pr(color("              实测 48 爆发 + 不限速下未触发风控。可随时改回。", C.DIM))
-    _fm = str(cfg.get("use_fast", "1"))
-    _fm = _fm if _fm in ("1", "2") else "1"
-    mode = ask("请选择刷课模式（1-2）", _fm).strip() or _fm
-    use_fast = (mode == "2")
-
     qps = ask(
         "限速 QPS",
         cfg.get("qps", "100000"),
@@ -2968,6 +3003,28 @@ def ui_choose_config(cfg: dict, task_count: int) -> dict:
             qps_val = 100000.0
     except ValueError:
         qps_val = 100000.0
+    # ---- 刷课节奏：波间隔 / 单轮推进 ----
+    pr()
+    pr(color("  ── 刷课节奏 ──", C.B + C.MAGENTA))
+    pr(color("    波间隔越小越快：0.2 秒 ≈ 30 倍速，10 秒 ≈ 4 倍速（保守）", C.DIM))
+    _iv_def = cfg.get("interval", 0.2)
+    _iv = ask("波间隔（秒）", str(_iv_def),
+              "每波之间等多久，越小越快（推荐 0.2）")
+    try:
+        interval_val = float(_iv)
+    except (TypeError, ValueError):
+        interval_val = float(_iv_def)
+    interval_val = max(0.05, min(interval_val, 60.0))
+    _st_def = cfg.get("stay", 10)
+    _st = ask("单轮推进（秒）", str(_st_def),
+              "每次上报声称看了多久，越大越快（推荐 10）")
+    try:
+        stay_val = float(_st)
+    except (TypeError, ValueError):
+        stay_val = float(_st_def)
+    stay_val = max(1.0, min(stay_val, 120.0))
+    # 波间隔 < 1 秒 → 自动启用「快速复核」行为（达标即停 + 防死循环兜底）
+    use_fast = (interval_val < 1.0)
 
     force_rounds = 0
     force_all = cfg.get("_force_all", False)
@@ -2982,6 +3039,7 @@ def ui_choose_config(cfg: dict, task_count: int) -> dict:
         "n_inst": n_inst, "concurrency": concurrency,
         "burst": burst, "qps": qps_val, "force_rounds": force_rounds,
         "use_fast": use_fast,
+        "interval": interval_val, "stay": stay_val,
     }
 
 
@@ -2998,9 +3056,9 @@ def ui_confirm(account: str, cfg: dict, task_count: int, force_all: bool) -> boo
     pr(f"   并发路数  : {color(str(cfg['concurrency']), C.CYAN)}")
     pr(f"   爆发路数  : {color(str(cfg['burst']), C.CYAN)}")
     pr(f"   限速 QPS  : {color(str(cfg['qps']), C.CYAN)}")
-    _m = cfg.get("use_fast")
-    pr("   刷课模式  : " + (color("快速复核（间隔0.2秒）", C.YELLOW) if _m
-       else color("传统间隔（每10秒）", C.GREEN)))
+    pr("   波间隔    : " + color(str(cfg.get("interval", 0.2)) + " 秒/波", C.YELLOW)
+       + color("（越小越快）", C.DIM))
+    pr("   单轮推进  : " + color(str(cfg.get("stay", 10)) + " 秒", C.YELLOW))
     divider()
     return ask_yes("确认开始？", True)
 
@@ -3210,7 +3268,9 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
               "n_inst": run_cfg["n_inst"], "concurrency": run_cfg["concurrency"],
               "burst": run_cfg["burst"], "qps": str(int(run_cfg["qps"])),
               "force_rounds": run_cfg["force_rounds"],
-              "use_fast": "2" if run_cfg.get("use_fast") else "1"})
+              "use_fast": "2" if run_cfg.get("use_fast") else "1",
+              "interval": run_cfg.get("interval"),
+              "stay": run_cfg.get("stay")})
 
     if not ui_confirm(account, run_cfg, len(tasks), force_all):
         pr()
@@ -3228,7 +3288,9 @@ async def ui_main(action: str = "brush", force_all_forced: bool = False):
             qps=run_cfg["qps"], offset=0, limit=0, dry_run=False, speed=None,
             force_rounds=run_cfg.get("force_rounds", 0),
             phase_offset_ms=0, burst_size=run_cfg["burst"], force_all=force_all,
-            use_fast=run_cfg.get("use_fast"))
+            use_fast=run_cfg.get("use_fast"),
+            interval=run_cfg.get("interval"),
+            stay_ms=int(float(run_cfg.get("stay", 10)) * 1000))
         return tk
 
     title("开始刷课", "🚀")
@@ -3286,16 +3348,16 @@ def _build_parser():
     p.add_argument("--concurrency", type=int, default=18, help="并发路数（默认18）")
     p.add_argument("--burst", type=int, default=48, help="爆发路数（默认48）")
     p.add_argument("--qps", type=float, default=100000.0, help="限速QPS（默认100000=不限速）")
+    p.add_argument("--interval", type=float, default=None,
+                   help="波间隔秒（默认0.2，越小越快；≥1秒自动转保守节奏）")
+    p.add_argument("--stay", type=float, default=None,
+                   help="单轮推进秒（默认10，越大越快）")
     p.add_argument("--offset", type=int, default=0, help="起始分片（多实例用）")
     p.add_argument("--limit", type=int, default=0, help="分片数量（多实例用）")
     p.add_argument("--phase-offset", type=int, default=0, help="首轮错峰毫秒")
     p.add_argument("--force-rounds", type=int, default=0, help="强制重刷轮数")
     p.add_argument("--force-all", action="store_true", help="强制重刷全部（含已完成）")
     p.add_argument("--dry-run", action="store_true", help="仅扫描不刷课")
-    p.add_argument("--fast", dest="fast", action="store_true", default=None,
-                   help="启用快速复核循环（更快，请求更密集）")
-    p.add_argument("--no-fast", dest="fast", action="store_false",
-                   help="使用传统10秒间隔方式（更保守）")
     return p
 
 
@@ -3328,7 +3390,8 @@ async def _run(args) -> int:
         phase_offset_ms=args.phase_offset,
         burst_size=args.burst,
         force_all=args.force_all,
-        use_fast=args.fast,
+        interval=args.interval,
+        stay_ms=int(args.stay * 1000) if args.stay else None,
     )
 
 
